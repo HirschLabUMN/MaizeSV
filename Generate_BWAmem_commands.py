@@ -4,7 +4,7 @@ import os, sys, argparse, subprocess, csv, time
 parser = argparse.ArgumentParser(description='')
 
 parser.add_argument('-fastqdir', type=str, metavar='fastq_ca', default='fastq_ca/', help='REQUIRED: Full path to directory with input fastq files')
-parser.add_argument('-S', type=str, metavar='Sample_Fastq_Key', help='REQUIRED: File to key that links fastq files to sample names')
+parser.add_argument('-S', type=str, metavar='Sample_Fastq_Key', help='REQUIRED: Space-delimited file to key that links fastq files to sample names. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
 parser.add_argument('-o', type=str, metavar='aligned_dir', default='aligned/', help='Realtive path to output directory [aligned/]')
 parser.add_argument('-c', type=str, metavar='command_directory', help="directory in which to put the three command files that are produced")
 parser.add_argument('-C', type=str, metavar='Number_of_cores', help="Number_of_cores for mapping")
@@ -19,7 +19,7 @@ if args.o.endswith("/") is False:
 	args.o += "/"
 if os.path.exists(args.o + "Unmerged") is False:
 	os.mkdir(args.o + "Unmerged/")
-tmpdir = args.o + "Unmerged/"
+
 
 if args.c.endswith("/") is False:
 	args.c += "/"
@@ -47,6 +47,7 @@ with open(args.S, 'r') as file:
 
 for samp,fqs in samps.items():
 	for ref, refpath in REFS.items():
+
 		out_prefix = samp + "_" + ref
 		FQ_string = ""
 		for fq in fqs: # Need to see if the different fqs correspond to different libraries or if it was just the same library sequenced multiple times.
@@ -59,7 +60,9 @@ for samp,fqs in samps.items():
 			FQs.sort()
 			if len(FQs) >= 2 and len(FQs) <= 3:
 				fq_name = fq + "_" + ref
-				bwa_out.write(r'bwa mem -M -t ' + str(args.C) + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" ' + refpath + " " + args.fastqdir + FQs[0] + " " + args.fastqdir + FQs[1] + ' -U ' + args.fastqdir + sings[0] + ' | samtools view -@ ' + str(args.C) + ' -Sbh - | samtools sort -n -@ ' + str(args.C) + ' -T ' + tmpdir + fq_name + '.tmp > ' + tmpdir + fq_name + '.bam\n')
+				outdir = args.o + "Unmerged/"
+				tmpdir = args.o + "Unmerged/" + fq_name
+				bwa_out.write('mkdir -p ' + tmpdir + r';bwa mem -M -t ' + str(args.C) + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" ' + refpath + " " + args.fastqdir + FQs[0] + " " + args.fastqdir + FQs[1] + ' -U ' + args.fastqdir + sings[0] + ' | samtools view -@ ' + str(args.C) + ' -Sbh - | samtools sort -n -@ ' + str(args.C) + ' -T ' + tmpdir + fq_name + '.tmp > ' + outdir + fq_name + '.bam; rm ' + tmpdir + '\n')
 
 				FQ_string += tmpdir + fq_name + '.bam '
 
