@@ -5,6 +5,7 @@
     -r2 : file containing paths to reverse read files
     -o  : Directory where the output of cutadapt will be written
     -c  : path to the cutadapt executable.  The most recent version (1.16) is required, which is not available on the cluster.  Download and install 1.16 and provide the path to cutadapt using this flag.
+    -s  : path to sickle executable
 """
 
 # Import neeeded modules
@@ -33,7 +34,7 @@ def get_read_paths(read_path_file, read_path_file2):
     return read_paths, read_paths2
 
 
-def build_command(readpath, outdir, cutadapt_path,readpath2 = "-99"):
+def build_command(readpath, outdir, cutadapt_path, sickle_path,readpath2 = "-99"):
     """Return a cutadapt command-like string given the sample file(s)"""
 
     cmd = [cutadapt_path] # Begin building command.  Command components are stored as separate elements in a list, which will later be joined in a space-delimited fashion.
@@ -52,10 +53,16 @@ def build_command(readpath, outdir, cutadapt_path,readpath2 = "-99"):
     cmd.append(outdir + ofile)
     cmd.append('-p')
     cmd.append(outdir + ofile2)
+
     # And then append the read path
     cmd.append(readpath.strip("\n").replace(" ", "\ "))
     cmd.append(readpath2.strip("\n").replace(" ", "\ "))
 
+    # Append sickle command
+    cmd.append("; " + sickle_path + " pe -f " + outdir + ofile + " -r " + outdir + ofile2 + " -t sanger -o " + outdir + ofile.replace(".fq.gz","_sickle.fq.gz -p ") + outdir + ofile2.replace(".fq.gz","_sickle.fq.gz -s ") + outdir + ofile.replace('_R1_cutadapt.fq.gz', '_singles_cutadapt_sickle.fq.gz'))
+
+    # Remove cutadapt output after sickle finishes
+    cmd.append("&& (rm " + outdir + ofile + "; rm " + outdir + ofile2 + ")")
     # And return the command as a string
     return ' '.join(cmd)
 
@@ -66,8 +73,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='This script generates commands to be used with for trimming adapters from paired-end read data using cutadapt')
     parser.add_argument('-r', type=str, metavar='read_path_file', help='REQUIRED:  Full path to file with a list of read paths, one per line.  IMPORTANT: if paired reads are in separate files (i.e. not interleaved), create two files: one for forward reads and one for reverse reads. Pass the file containing paths to reverse read files to -r2')
     parser.add_argument('-r2', type=str, metavar='read_path_file2', default="-99", help='file containing paths to reverse read files')
-    parser.add_argument('-o', type=str, metavar='output_directory', default='/panfs/roc/scratch/pmonnaha/Maize/Reads/Cutadapt/', help='Directory where the output of cutadapt will be written')
-    parser.add_argument('-c', type=str, metavar='path_to_cutadapt', default='~/.local/bin/cutadapt', help='Directory where the output of cutadapt will be written')
+    parser.add_argument('-o', type=str, metavar='output_directory', default='/panfs/roc/scratch/pmonnaha/Maize/Reads/Cutadapt/', help='Directory where the output of cutadapt and sickle will be written')
+    parser.add_argument('-c', type=str, metavar='path_to_cutadapt', default='~/.local/bin/cutadapt', help='path be latest version of cutadapt')
+    parser.add_argument('-s', type=str, metavar='path_to_sickle', default='/home/hirschc1/pmonnaha/software/sickle/sickle')
 
     args = parser.parse_args()
 
@@ -83,6 +91,6 @@ if __name__ == "__main__":
     r2_paths.sort()
 
     for i, fq in enumerate(r_paths): # Loop over files, build commands, and print to output.
-        cmd = build_command(fq, args.o, args.c, r2_paths[i])
+        cmd = build_command(fq, args.o, args.c, args.s, r2_paths[i])
         print cmd
 
