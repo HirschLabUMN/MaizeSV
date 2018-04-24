@@ -1,12 +1,13 @@
 #!/usr/bin/env python
-"""Parses a series of FastQC reports and prints out command lines for adapter
-removal with cutadapt. We do it this way because cutadapt runtime scales
-with the number of adapters to remove, so we only want to trim the ones that
-are actually present in the reads. Takes two arguments:
-    1) Directory of unzipped FastQC reports
-    2) File with a list of read paths, one per line
+"""This script generates commands to be used with for trimming adapters using cutadapt.  The resulting commands can be executed in parallel using GNU parallel or a task array.  Should only be used for paired-end data.  Output is meant to be .
+ Takes four arguments:
+    -r  :  REQUIRED. Full path to file with a list of read paths, one per line.  IMPORTANT: if paired reads are in separate files (i.e. not interleaved), create two files: one for forward reads and one for reverse reads. Pass the file containing paths to reverse read files to -r2
+    -r2 : file containing paths to reverse read files
+    -o  : Directory where the output of cutadapt will be written
+    -c  : path to the cutadapt executable.  The most recent version (1.16) is required, which is not available on the cluster.  Download and install 1.16 and provide the path to cutadapt using this flag.
 """
 
+# Import neeeded modules
 import sys
 import os
 import pipes
@@ -15,145 +16,45 @@ import subprocess
 import argparse
 
 
-def get_file_list(fastqc_dir):
-    """Return full paths to the fastqc reports given a directory full of
-    unzipped fastqc reports."""
-    # generate the full absolute path to the supplied directory
-    f_path = os.path.abspath(os.path.expanduser(fastqc_dir))
-    # Build the file list. We find the sub directories unter the main fastqc
-    # directory, and then give the path to the 'fastqc_data.txt' file under it
-    fastqc_dirs = [
-        os.path.join(f_path, d, 'fastqc_data.txt')
-        for d
-        in os.listdir(f_path)
-        if os.path.isdir(os.path.join(f_path, d))]
-    return fastqc_dirs
+def get_read_paths(read_path_file, read_path_file2):
+    """Returns a list(s) which stores the path to each fastq file or pair of files.  These lists will be looped over and passed to build_command"""
+    
+    read_paths = []
+    read_paths2 = []
+    with open(read_path_file, 'r') as in1:
+        for line in in1:
+            read_paths.append(line)
+
+    if read_path_file2 != "-99": # Determines if the paired end 
+        with open(read_path_file2, 'r') as in2:
+            for line in in2:
+                read_paths2.append(line)
+
+    return read_paths, read_paths2
 
 
-def get_contam(f_report):
-    """Parse the FastQC report to identify the contaminating adapters. If none
-    are present, just return the universal adapter. Else, return the universal
-    adapter and any other contaminating adapters."""
-    # Start off with the universal adapter. This will always be searched.
-    contaminants = ['AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT']
-    # iterate through the file. This wuld be a really great time for Perl's
-    # paragraph mode... We identify the line that starts with
-    # ">>Overrepresented sequences" and take data until we find
-    # >>END_MODULE. All the stuff in between are the contaminants.
-    with open(f_report, 'r') as f:
-        in_overrep = False
-        for line in f:
-            if line.startswith('Filename'):
-                fname = line.strip().split()[1]
-            # If we hit >>Overrepresented, then we are in the right section
-            if line.startswith('>>Overrepresented'):
-                in_overrep = True
-                continue
-            # Once we hit >>END, then we are done with overrepresented seqs
-            if line.startswith('>>END'):
-                in_overrep = False
-            # If we are in the overrepresented sequences section and have a line
-            # that starts with the hash mark, it is just the header and we skip
-            # it.
-            if in_overrep and line.startswith('#'):
-                continue
-            elif in_overrep:
-                cont = line.strip().split()[0]
-                # Check if 'N' is in our contaminant. If it is, then we want to
-                # skip this, because it causes problems with trimming.
-                if 'N' in contaminants:
-                    continue
-                else:
-                    contaminants.append(line.strip().split()[0])
-            else:
-                continue
-    return fname, contaminants
+def build_command(readpath, outdir, cutadapt_path,readpath2 = "-99"):
+    """Return a cutadapt command-like string given the sample file(s)"""
 
+    cmd = [cutadapt_path] # Begin building command.  Command components are stored as separate elements in a list, which will later be joined in a space-delimited fashion.
 
-def get_read_paths(read_paths):
-    """Return a dictionary where the key is the basename of the read (because
-    fastqc reports that) and the value is the quoted full path of the read
-    on MSI"""
-    reads = {}
-    with open(read_paths, 'r') as f:
-        for line in f:
-            p = pipes.quote(line.strip())
-            f = os.path.basename(line.strip())
-            reads[f] = p
-    return reads
+    if readpath2 == "-99": 
+        cmd.append("--interleaved") # Modify command if paired-data is interleaved
+        readpath2 = ''
 
+    cmd.append('-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT -f fastq --quality-base=33 -o') # All files are trimmed with these same common options
 
-def build_command(f_name, contaminants, read_paths, outdir, interleaved):
-    """Return a cutadapt command-like string given the sample file and the
-    list of contaminants that are present in it."""
-    # Get the proper path to the file
-    path = read_paths[f_name]
-    # We want to extract the barcode out of the filename. We do this by using a
-    # regular expression.
-    # barcode = re.search('[ATCG]{6}', f_name).group()
+    ofile = readpath.split("/")[-1].strip("\n") # Get just the base filename and strip off the new line character.
+    ofile = ofile.replace('.fq.gz', '_R1_cutadapt.fq.gz') # replaces either file extension with same common cutadapt extension
+    ofile = ofile.replace('.fastq.gz', '_R1_cutadapt.fq.gz')
+    ofile2 = ofile.replace('R1', 'R2')
 
-    cmd = 'zcat ' + path + " | head -40 | grep ' ' - " # take first 40 lines (first 10 reads) from fastq and grab out the read ID line which contains the index sequence 
-    pp = subprocess.Popen(cmd,shell = True,stdout=subprocess.PIPE)
-    output = pp.communicate()
-
-     # isolate index sequence from read ID line...the final split call will split the two indexes for a dual indexed fastq 
-    lines = str(output[0]).split('\n') 
-
-    for i,line in enumerate(lines[:-1]):
-        temp_barcodes = str(line).split()[1].split(":")[-1].split("+")
-        if len(temp_barcodes) == 2:
-
-            # if "N" not in temp_barcodes[0] and "N" not in temp_barcodes[1]:
-            barcodes = ['GATCGGAAGAGCACACGTCTGAACTCCAGTCAC' + temp_barcodes[0].strip("N") + 'ATCTCGTATGCCGTCTTCTGCTTG', 'AATGATACGGCGACCACCGAGATCTACAC' + temp_barcodes[1].strip("N") + 'ACACTCTTTCCCTACACGACGCTCTTCCGATCT']
-            if i == 0:
-                og_barcodes = barcodes
-            elif og_barcodes != barcodes:
-                print str("Errors in barcodes for " + f_name + ". Double check that command has correct barcode")
-                # break
-        elif len(temp_barcodes) == 1:
-            # if "N" not in temp_barcodes[0]:
-            barcodes = ['GATCGGAAGAGCACACGTCTGAACTCCAGTCAC' + temp_barcodes[0].strip("N") + 'ATCTCGTATGCCGTCTTCTGCTTG']
-            if i == 0:  
-                og_barcodes = barcodes
-            elif og_barcodes != barcodes:
-                print "Errors in barcodes for " + f_name + ". Double check that command has correct barcode"
-                # break
-
-    # And start building the command string. We will not discard reads.
-    cmd = ['cutadapt']
-    # If the barcode is in the dictionary of index adapters, then we want to
-    # add that to the list of adapters to trim
-    for barcode in barcodes:
-        cmd.append('-b')
-        cmd.append(barcode)
-    # Add the contaminants to trim
-    for con in contaminants:
-        cmd.append('-b')
-        cmd.append(con)
-    # Specify fastq format
-    cmd.append('-f')
-    cmd.append('fastq')
-    # Specify 33-offset quality encoding
-    cmd.append('--quality-base=33')
-    # Specify an output file
-    if f_name.endswith("fastq.gz"):
-        ofile = f_name.replace('.fastq.gz', '_cutadapt.fastq.gz')
-        if interleaved == 'false':
-            f_name2 = path.replace('1.fastq.gz', '2.fastq.gz')
-            ofile2 = f_name.replace('1.fastq.gz', '2_cutadapt.fastq.gz')
-    elif f_name.endswith("fq.gz"):
-        ofile = f_name.replace('.fq.gz', '_cutadapt.fastq.gz')
-        if interleaved == 'false':
-            f_name2 = path.replace('1.fq.gz', '2.fq.gz')
-            ofile2 = f_name.replace('1.fq.gz', '2_cutadapt.fastq.gz')
-    cmd.append('-o')
     cmd.append(outdir + ofile)
-    if interleaved == 'false':
-        cmd.append('-p')
-        cmd.append(outdir + ofile2)
+    cmd.append('-p')
+    cmd.append(outdir + ofile2)
     # And then append the read path
-    cmd.append(path)
-    cmd.append(f_name2)
+    cmd.append(readpath.strip("\n").replace(" ", "\ "))
+    cmd.append(readpath2.strip("\n").replace(" ", "\ "))
 
     # And return the command as a string
     return ' '.join(cmd)
@@ -161,29 +62,27 @@ def build_command(f_name, contaminants, read_paths, outdir, interleaved):
 
 if __name__ == "__main__":
     """Main function."""
-    parser = argparse.ArgumentParser(description='This script generates commands to be used with for trimming adapters using cutadapt')
 
-    parser.add_argument('-f', type=str, metavar='fastqc_dir', help='REQUIRED: Directory of unzipped FastQC reports')
-    parser.add_argument('-r', type=str, metavar='read_path_file', help='REQUIRED: Full path to file with a list of read paths, one per line.  IMPORTANT: if paired reads are in separate files, only include the first file name')
-    parser.add_argument('-i', type=str, metavar='interleaved', help='REQUIRED: are paired reads in separate files or interleaved: true or false')
+    parser = argparse.ArgumentParser(description='This script generates commands to be used with for trimming adapters from paired-end read data using cutadapt')
+    parser.add_argument('-r', type=str, metavar='read_path_file', help='REQUIRED:  Full path to file with a list of read paths, one per line.  IMPORTANT: if paired reads are in separate files (i.e. not interleaved), create two files: one for forward reads and one for reverse reads. Pass the file containing paths to reverse read files to -r2')
+    parser.add_argument('-r2', type=str, metavar='read_path_file2', default="-99", help='file containing paths to reverse read files')
     parser.add_argument('-o', type=str, metavar='output_directory', default='/panfs/roc/scratch/pmonnaha/Maize/Reads/Cutadapt/', help='Directory where the output of cutadapt will be written')
-    parser.add_argument('-O', type=str, metavar='command_file', default='/home/hirschc1/pmonnaha/JobScripts/accessory/cutadapt_commands.txt', help='Full path to the file to which cutadapt commands will be written')
+    parser.add_argument('-c', type=str, metavar='path_to_cutadapt', default='~/.local/bin/cutadapt', help='Directory where the output of cutadapt will be written')
 
     args = parser.parse_args()
 
-    outfile = open(args.O, 'w')
-
-    if args.o.endswith("/") is False:
+    if args.o.endswith("/") is False: # Add "/" to end of output path if it doesn't already exist so that path to output file is formatted correctly
         args.o += "/"
 
-    reports = get_file_list(args.f)
-    r_paths = get_read_paths(args.r)
-    for r in reports:
-        fname, c = get_contam(r)
-        if args.i == "false" and (fname.endswith("2.fq.gz") or fname.endswith("2.fastq.gz")):
-            pass
-        else:
-            cmd = build_command(fname, c, r_paths, args.o, args.i)
-            print cmd
-            outfile.write(cmd + "\n")
+    r_paths, r2_paths = get_read_paths(args.r, args.r2) # r2 = reverse reads; r = forward reads
+    r_paths.sort()
+
+    if args.r2 == "-99": # If data is interleaved, set null value (-99) for all elements in the list containing reverse reads
+        r2_paths = ["-99" for j in r_paths]
+
+    r2_paths.sort()
+
+    for i, fq in enumerate(r_paths): # Loop over files, build commands, and print to output.
+        cmd = build_command(fq, args.o, args.c, r2_paths[i])
+        print cmd
 
