@@ -58,11 +58,14 @@ def build_command(readpath, outdir, cutadapt_path, sickle_path,readpath2 = "-99"
     cmd.append(readpath.strip("\n").replace(" ", "\ "))
     cmd.append(readpath2.strip("\n").replace(" ", "\ "))
 
+    sfile1 = ofile.replace(".fq.gz","_sickle.fq")
+    sfile2 = ofile2.replace(".fq.gz","_sickle.fq")
+    sfile3 = ofile.replace('_R1_cutadapt.fq.gz', '_singles_cutadapt_sickle.fq')
     # Append sickle command
-    cmd.append("; " + sickle_path + " pe -f " + outdir + ofile + " -r " + outdir + ofile2 + " -t sanger -o " + outdir + ofile.replace(".fq.gz","_sickle.fq.gz -p ") + outdir + ofile2.replace(".fq.gz","_sickle.fq.gz -s ") + outdir + ofile.replace('_R1_cutadapt.fq.gz', '_singles_cutadapt_sickle.fq.gz'))
+    cmd.append("; " + sickle_path + " pe -f " + outdir + ofile + " -r " + outdir + ofile2 + " -t sanger -o " + outdir + sfile1 + " -p " + outdir + sfile2 + " -s " + outdir + sfile3)
 
     # Remove cutadapt output after sickle finishes
-    cmd.append("&& (rm " + outdir + ofile + "; rm " + outdir + ofile2 + ")")
+    cmd.append("&& (rm " + outdir + ofile + "; rm " + outdir + ofile2 + "); gzip " + sfile1 + "; gzip " + sfile2 + "; gzip " + sfile3)
     # And return the command as a string
     return ' '.join(cmd)
 
