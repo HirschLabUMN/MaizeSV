@@ -1,0 +1,4 @@
+B73v4 /home/hirschc1/pmonnaha/misc-files/B73_chr1-10.fasta
+PH207 /home/hirschc1/pmonnaha/misc-files/PH207_chr1-10.fasta
+W22v12 /home/hirschc1/pmonnaha/misc-files/W22_chr1-10.fasta
+PHB47 /home/hirschc1/pmonnaha/misc-files/PHB47_chr1-10.fasta
