@@ -1,1 +1,162 @@
-[{"content": "# WiDiv Structural Variation\n\nSummary\n\n* * *\n\nStructural variant discovery using whole genome short-read sequence data on 500 inbred lines from the Wisconsin Diversity Panel (WiDiv). \u00a0For robust structural variant discovery, we take the consensus variant calls across:\n\n  \n\n\n  1. Three state-of-the-art SV discovery tools\n\n    * Lumpy\u00a0\n\n    * MetaSV\n\n    * Genome STRiP\n\n  2. At least 4 high-quality reference genomes\n\n    * B73, W22, PH207, and PHB47\n\n\n\n\n  \n\n\nSequence data comes from 3 sources:\n\n  1. JGI: An initial subset of ~60 lines\n\n  2. Mark Mikel (MM):\u00a0High depth sequence data corresponding to 8 lines\n\n    * B73, G84, G35, J40, G39, LH82, G47, and PH207\n\n  3. Novagene: All remaining samples\n\n\n\n\n  \n\n\nFasta preparation\n\n* * *\n\nSeveral subsequent steps in the pipeline work more smoothly if all extraneous scaffolds are removed from the reference sequences.\n\n  \n\n\nUse\u00a0filter_fasta.py to achieve this:\n\npython filter_fasta.py Ref_extraContigs.txt IN.fasta OUT.fasta\n\n  \n\n\nTo install all necessary components to run\u00a0 **filter_fasta.py,** perform the following steps (taken from\u00a0<https://www.biostars.org/p/157811/>)\n\n  \n\n\n1) Ensure you have python and biopython installed. Type in your terminal: \n\npython -c \"import Bio\"\n\n  \n\n\necho $?\n\nIf \"0\" displayed, pass to step 2. In case error message appears, install it by easy_install or pip: \n\nsudo easy_install -f <http://biopython.org/DIST/> biopython\n\nor \n\nsudo pip install biopython\n\nIn case of not having pip installed, type: \n\nsudo apt-get install pip\n\n  \n\n\n3) Run the program as follows: \n\nchmod +x filter_fasta.py\n\n  \n\n\npython filter_fasta.py your_ids.txt IN.fasta OUT.fasta\n\nwhere: \n\n  * your_ids.txt --> A file containing the identifiers including \">\" you want to EXCLUDE, one identifier per line; like: \n\n\n\n\n>hhh \n\n>ghag \n\n>MAMND\n\n  * IN.fasta --> your original fasta file\n\n  * OUT.fasta --> your output file\n\n\n\n\n  \n\n\nFiles ending with **extraContigs** in /scripts/accessorry/ contain the extra contig ID\u2019s for references from the following paths within /home/maize/:\n\nB73 \u00a0:\u00a0./shared/databases/genomes/Zea_mays/B73/Zea_mays.AGPv4.dna.toplevel.fa\n\nPH207:\u00a0./shared/databases/genomes/Zea_mays/PH207/ZmaysPH207_443_v1.0.fa\n\nW22 \u00a0: ./shared/databases/genomes/Zea_mays/W22/W22__Ver12.genome.normalized.fasta\u00a0\u00a0 \n\nPHB47:\u00a0./sna/PHB47/Zea_mays_var_PHB47.mainGenome.fasta\n\n  \n\n\nAfter removing extraneous scaffolds, reference fastas need to be indexed using bwa:\n\nbwa index <reference_fasta>\n\n  \n\n\nFastq Pre-processing\n\n* * *\n\nAssess quality of fastq data via fastqc as implemented in\u00a0. \u00a0\n\n  \n\n\nThe sequence data from MM (8 samples listed below) need to be handled slightly differently\n\n  * B73, G84, G35, J40, G39, LH82, G47, and PH207\n\n\n\n\n  \n\n\nThese samples need to be handled slightly differently. \u00a0Concatenated all fastq files following adapter and quality trimming\n", "createdate": "Apr 24 2018 17:42:07", "modifydate": "Apr 29 2018 20:58:36", "tags": []}]
+# WiDiv Structural Variation
+
+Summary
+
+* * *
+
+Structural variant discovery using whole genome short-read sequence data on 500 inbred lines from the Wisconsin Diversity Panel (WiDiv).  For robust structural variant discovery, we take the consensus variant calls across:
+
+  
+
+
+  1. Three state-of-the-art SV discovery tools
+
+    * Lumpy 
+
+    * MetaSV
+
+    * Genome STRiP
+
+  2. At least 4 high-quality reference genomes
+
+    * B73, W22, PH207, and PHB47
+
+
+
+
+  
+
+
+Sequence data comes from 3 sources:
+
+  1. JGI: An initial subset of ~60 lines
+
+  2. Mark Mikel (MM): High depth sequence data corresponding to 8 lines
+
+    * B73, G84, G35, J40, G39, LH82, G47, and PH207
+
+  3. Novagene: All remaining samples
+
+
+
+
+  
+
+
+Fasta preparation
+
+* * *
+
+Several subsequent steps in the pipeline work more smoothly if all extraneous scaffolds are removed from the reference sequences.
+
+  
+
+
+Use filter_fasta.py to achieve this:
+
+python filter_fasta.py Ref_extraContigs.txt IN.fasta OUT.fasta
+
+  
+
+
+To install all necessary components to run  **filter_fasta.py,** perform the following steps (taken from <https://www.biostars.org/p/157811/>)
+
+  
+
+
+1) Ensure you have python and biopython installed. Type in your terminal: 
+
+python -c "import Bio"
+
+  
+
+
+echo $?
+
+If "0" displayed, pass to step 2. In case error message appears, install it by easy_install or pip: 
+
+sudo easy_install -f <http://biopython.org/DIST/> biopython
+
+or 
+
+sudo pip install biopython
+
+In case of not having pip installed, type: 
+
+sudo apt-get install pip
+
+  
+
+
+3) Run the program as follows: 
+
+chmod +x filter_fasta.py
+
+  
+
+
+python filter_fasta.py your_ids.txt IN.fasta OUT.fasta
+
+where: 
+
+  * your_ids.txt --> A file containing the identifiers including ">" you want to EXCLUDE, one identifier per line; like: 
+
+
+
+
+>hhh 
+
+>ghag 
+
+>MAMND
+
+  * IN.fasta --> your original fasta file
+
+  * OUT.fasta --> your output file
+
+
+
+
+  
+
+
+Files ending with **extraContigs** in /scripts/accessorry/ contain the extra contig ID’s for references from the following paths within /home/maize/:
+
+B73  : ./shared/databases/genomes/Zea_mays/B73/Zea_mays.AGPv4.dna.toplevel.fa
+
+PH207: ./shared/databases/genomes/Zea_mays/PH207/ZmaysPH207_443_v1.0.fa
+
+W22  : ./shared/databases/genomes/Zea_mays/W22/W22__Ver12.genome.normalized.fasta   
+
+PHB47: ./sna/PHB47/Zea_mays_var_PHB47.mainGenome.fasta
+
+  
+
+
+After removing extraneous scaffolds, reference fastas need to be indexed using bwa:
+
+bwa index <reference_fasta>
+
+  
+
+
+Fastq Pre-processing
+
+* * *
+
+Assess quality of fastq data via fastqc as implemented in .  
+
+  
+
+
+The sequence data from MM (8 samples listed below) need to be handled slightly differently
+
+  * B73, G84, G35, J40, G39, LH82, G47, and PH207
+
+
+
+
+  
+
+
+These samples need to be handled slightly differently.  Concatenated all fastq files following adapter and quality trimming
