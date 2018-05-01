@@ -2,16 +2,15 @@
 #PBS -l mem=2976gb,nodes=48:ppn=24,walltime=24:00:00
 #PBS -A hirschc1
 #PBS -m abe
-#PBS -M pmonnaha@umn.edu
 #PBS -q large
-#PBS -o /home/hirschc1/pmonnaha/OandE/Speedseq_large.o
-#PBS -e /home/hirschc1/pmonnaha/OandE/Speedseq_large.e
+#PBS -o path/to/stdout/directory/Speedseq_large.o
+#PBS -e path/to/stderr/directory/Speedseq_large.e
 
 # Load modules
 module load parallel
 
-# And the command list
-CMD_LIST="/panfs/roc/groups/14/hirschc1/pmonnaha/JobScripts/accessory/speedseq_commands_E2_${PBS_ARRAYID}"
+# MODIFY THE PATH BELOW AS WELL AS -o AND -e PATHS ABOVE
+CMD_LIST="/path/to/file/containing/speedseq_commands_${PBS_ARRAYID}"
 
 # taken from the MSI parallel page at
 # https://www.msi.umn.edu/support/faq/how-can-i-use-gnu-parallel-run-lot-commands-parallel

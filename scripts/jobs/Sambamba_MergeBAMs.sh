@@ -3,15 +3,13 @@
 #PBS -A hirschc1
 #PBS -m abe
 #PBS -q mesabi
-#PBS -o /path/to/stdout/directory/cutadapt.o
-#PBS -e /path/to/stderr/directory/cutadapt.e
+#PBS -o /path/to/stdout/directory/sambamba_merge.o
+#PBS -e /path/to/stderr/directory/sambamba_merge.e
 
-# Load modules
-module load cutadapt
 
 # MODIFY THESE PATHS BELOW AS WELL AS -o AND -e paths above
-CMD_LIST="/path/to/file/containing/cutadapt_commands.txt"
-SUCCESS_LIST="/path/to/file/to/store/successful/cutadapt_runs.txt"
+CMD_LIST="/path/to/file/containing/sambamba_commands.txt"
+SUCCESS_LIST="/path/to/file/to/store/successful/sambamba_commands_runs.txt"
 
 CMD="$(sed "${PBS_ARRAYID}q;d" ${CMD_LIST})"
 

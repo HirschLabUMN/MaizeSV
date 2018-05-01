@@ -4,17 +4,16 @@
 #PBS -m abe
 #PBS -M pmonnaha@umn.edu
 #PBS -q batch
-#PBS -o /home/hirschc1/pmonnaha/OandE/fastqc.o
-#PBS -e /home/hirschc1/pmonnaha/OandE/fastqc.e
+#PBS -o /path/to/stdout/directory/fastqc.o
+#PBS -e /path/to/stderr/directory/fastqc.e
 
 # Load modules
 module load fastqc
 
-# And the command list
-CMD_LIST="/path/to/file/containing/commands.txt"
+# MODIFY THE PATH BELOW AS WELL AS -o AND -e paths above
+CMD_LIST="/path/to/file/containing/fastqc_commands.txt"
 
 # CMD_LIST can be generated with "find <fastqdir> -name "*fastq*" -o -name "*fq*" -print | xargs -I {} echo "fastqc --noextract -t <number_of_threads> -o <outdir>" {} > <command_file>"
-
 CMD="$(sed "${PBS_ARRAYID}q;d" ${CMD_LIST})"
 
 eval ${CMD}
