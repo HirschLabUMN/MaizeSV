@@ -16,6 +16,14 @@ Structural variant discovery using whole genome short-read sequence data on 500 
 
        * B73, W22, PH207, and PHB47  
 
+## Prerequisites
+Python 2.7 is required for several of the softwares that we will be using.  It is convenient to create a virtual environment for python 2.7 as this will allow us to download, install, and maintain all of the necessary packages that we will be using.  To create a virtual environment with python 2.7, do:
+
+    conda create -n py27 python=2.7 anaconda
+Anytime you need to use python 2.7 or install a package/module for a piece of software that utilizes python 2.7, simply type:
+
+    source activate py27
+beforehand.  This will load python 2.7 along with any packages installed within this virtual environment.
 
 ## Fasta preparation
 
@@ -25,26 +33,14 @@ To install all necessary components to run **filter_fasta.py**, perform the fol
 
 1.Ensure you have python and biopython installed. Type in your terminal:  
 
+    source activate py27
     python -c "Import Bio"
     echo $?
-
-If "0" displayed, pass to step 2. In case error message appears, install it by easy_install or pip: 
-
-    sudo easy_install -f <http://biopython.org/DIST/> biopython
-
-or 
-
     sudo pip install biopython
 
-In case of not having pip installed, type: 
-
-    sudo apt-get install pip
-
-
-3.Run the program as follows: 
+2.Run the program as follows: 
 
     chmod +x filter_fasta.py
-
     python filter_fasta.py your_ids.txt IN.fasta OUT.fasta
 
 where: 
@@ -147,6 +143,17 @@ Install _speedseq_ (also installs _sambamba_ and _samblaster,_ automatically) 
     git clone --recursive <https://github.com/hall-lab/speedseq>
     cd speedseq
     make
+
+If the installation fails, try installing just the necessary components of speedseq, which is align and sv.  Installation of speedseq is modular, so these components can be installed with individual calls to make.
+E.g. 
+
+    make align
+from within the speedseq directory.
+
+For installing _speedseq sv_, first do:
+    
+    module load root
+    source /panfs/roc/msisoft/root/6.06.06/bin/thisroot.sh
 
 Generate _speedseq_ commands with _./scripts/code/_**Generate_SpeedSeq_commands.py**
 

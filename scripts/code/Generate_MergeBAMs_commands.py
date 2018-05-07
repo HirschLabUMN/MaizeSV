@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""This script generates commands for merging files with sambamba.  These commands can be executed in parallel using GNU parallel or a task array.  Be sure to use the same Sample_Fastq_Key (-s) and output_directory (-o) as was used with Generate_SpeedSeq_commands.py
+"""
+Author: Patrick Monnahan
+Purpose: This script generates commands for merging files with sambamba.  These commands can be executed in parallel using GNU parallel or a task array.  Be sure to use the same Sample_Fastq_Key (-s) and output_directory (-o) as was used with Generate_SpeedSeq_commands.py
  Takes the following arguments:
     -s :  REQUIRED: Space-delimited file to key that links fastq files to sample names. fastq file names can be partial, but must be complete enough to uniquely identify the fastq file. One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
     -o :  REQUIRED: Full path to output directory in which the MERGED bam files will be written
@@ -15,6 +17,7 @@ import time
 
 # Specify arguments to be read from the command line
 parser = argparse.ArgumentParser(description='This script generates commands for merging files with sambamba.  These commands can be executed in parallel using GNU parallel or a task array.  Be sure to use the same Sample_Fastq_Key (-s) and output_directory (-o) as was used with Generate_SpeedSeq_commands.py')
+parser.add_argument('-b', type=str, metavar='bam_directory', required=True, help='Full path to directory with input unmerged bam files')
 parser.add_argument('-k', type=str, metavar='Sample_Fastq_Key', help='REQUIRED: Space-delimited file to key that links fastq files to sample names.  fastq file names can be partial, but must be complete enough to uniquely identify the fastq file.One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
 parser.add_argument('-o', type=str, metavar='output_bam_directory', help='REQUIRED: Full path to output directory in which the MERGED bam files will be written')
 parser.add_argument('-c', type=str, metavar='Number_of_cores', default="1")
@@ -41,20 +44,24 @@ with open(args.r, 'r') as ref_file:
         REFS[line.split()[0]] = line.split()[1]
 
 # Main loop to write commands
-for samp,fqs in samps.items():
+for samp,bams in samps.items():
     for ref, refpath in REFS.items():
         out_prefix = samp + "_" + ref
         BAM_string = ""
-        for fq in fqs:
-            tmp_name = fq + "_" + ref
+        for bam in bams:
+            tmp_name = bam + "_" + ref
             tmpdir = args.o + tmp_name + "/"
-            BAM_string += tmpdir + tmp_name + '.bam '
+            bam_name = [s for s in os.listdir(args.b) if bam in s and "splt" not in s and "disc" not in s]
+            
+            assert len(bam_name) == 1, "Found multiple files corresponding to %r" % bam
+
+            BAM_string += tmpdir + bam_name
 
             # Make sure that all of the expected (full, discordant, and split reads) bams exist
             error = True
             if os.path.exists(tmpdir + tmp_name + '.bam') and os.path.exists(tmpdir + tmp_name + '.discordants.bam') and os.path.exists(tmpdir + tmp_name + '.splitters.bam'):
                 error = False
-            assert error is False, "Did not find all bams (full, discordant, and split reads) for fastq file: %r" % fq
+            assert error is False, "Did not find all bams (full, discordant, and split reads) for fastq file: %r" % bam
 
         fin_name = args.o + samp + "_" + ref + '.bam' # Name of final merged bam file
 
@@ -62,6 +69,4 @@ for samp,fqs in samps.items():
         print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + ' && rm ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
         print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam", ".discordants.bam") + ' && rm ' + BAM_string.replace(".bam", ".discordants.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam'))
         print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam", ".splitters.bam") + ' && rm ' + BAM_string.replace(".bam", ".splitters.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam'))
-
-
 

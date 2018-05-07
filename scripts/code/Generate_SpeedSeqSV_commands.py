@@ -14,7 +14,7 @@ import argparse
 
 # Specify arguments to be read from the command line
 parser = argparse.ArgumentParser(description='This script generates commands for discovering structural variants with speedseq sv.  Speedseq sv implements lumpy (for discovery) along with svtyper and CNVnator (for genotyping)')
-parser.add_argument('-b', type=str, metavar='bam_directory', required=True, help='Full path to directory with input fastq files')
+parser.add_argument('-b', type=str, metavar='bam_directory', required=True, help='Full path to directory with input merged bam files')
 parser.add_argument('-r', type=str, metavar='Reference_Path_Key', required=True, help='Space-delimited file to key that links reference fasta path AND reference non-genic bed file path to reference names. Format: Reference_name Reference.fasta Reference_NonGenic.bed')
 parser.add_argument('-o', type=str, metavar='output_bam_directory', required=True, help='Full path to output directory in which the per-individual vcf files will be written')
 parser.add_argument('-c', type=str, metavar='Number_of_cores', required=True, help="Number_of_cores")
