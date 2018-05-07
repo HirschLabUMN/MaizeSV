@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""This script generates commands for mapping fastq files with 'speedseq' as well as subsequent commands for merging bams within a sample.  We map all fastqs corresponding to the same sample separately and then merge these after the fact in order to properly specify reads groups for duplicate removal.  These commands can be executed in parallel using GNU parallel or a task array.  Expects paired-end data for all samples and that such data is in separate files for forward and reverse reads.  For the mapping step, all bams within a sample will be written to a temporary folder named after the sample.  During the merging step, all bams will be merged within the temporary folder and written to the final output directory.  
+"""This script generates commands for mapping fastq files with 'speedseq align'.  We map all fastqs corresponding to the same sample separately and then merge these after the fact in order to properly specify reads groups for duplicate removal.  These commands can be executed in parallel using GNU parallel or a task array.  Expects paired-end data for all samples and that such data is in separate files for forward and reverse reads.  For the mapping step, all bams within a sample will be written to a temporary folder named after the sample  
  Takes the following arguments:
     -f :  REQUIRED: Full path to directory with input fastq files'
     -k :  REQUIRED: Space-delimited file to key that links fastq files to sample names. fastq file names can be partial, but must be complete enough to uniquely identify the fastq file. One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
@@ -17,12 +17,12 @@ import time
 
 # Specify arguments to be read from the command line
 parser = argparse.ArgumentParser(description='This script generates commands for mapping fastq files with "speedseq" as well as subsequent commands for merging bams within a sample.  We map all fastqs corresponding to the same sample separately and then merge these after the fact in order to properly specify reads groups for duplicate removal.  These commands can be executed in parallel using GNU parallel or a task array.  Expects paired-end data for all samples and that such data is in separate files for forward and reverse reads.  For the mapping step, all bams within a sample will be written to a temporary folder named after the sample.  During the merging step, all bams will be merged within the temporary folder and written to the final output directory')
-parser.add_argument('-f', type=str, metavar='fastq_directory', help='REQUIRED: Full path to directory with input fastq files')
-parser.add_argument('-k', type=str, metavar='Sample_Fastq_Key', help='REQUIRED: Space-delimited file to key that links fastq files to sample names.  fastq file names can be partial, but must be complete enough to uniquely identify the fastq file.One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
-parser.add_argument('-r', type=str, metavar='Reference_Path_Key', help='REQUIRED: Space-delimited file to key that links reference fasta path to reference names to be used in BAM naming. Format: Reference_name Reference_path')
-parser.add_argument('-o', type=str, metavar='output_bam_directory', help='REQUIRED: Full path to output directory in which the MERGED bam files will be written')
-parser.add_argument('-c', type=str, metavar='Number_of_mapping_cores', help="REQUIRED: Number_of_cores for mapping")
-parser.add_argument('-m', type=str, metavar='Number_of_Gb', help="REQUIRED: number of gigabytes of memory for mapping")
+parser.add_argument('-f', type=str, metavar='fastq_directory', required=True, help='Full path to directory with input fastq files')
+parser.add_argument('-k', type=str, metavar='Sample_Fastq_Key', required=True, help='Space-delimited file to key that links fastq files to sample names.  fastq file names can be partial, but must be complete enough to uniquely identify the fastq file.One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
+parser.add_argument('-r', type=str, metavar='Reference_Path_Key', required=True, help='Space-delimited file to key that links reference fasta path to reference names to be used in BAM naming. Format: Reference_name Reference_path')
+parser.add_argument('-o', type=str, metavar='output_bam_directory', required=True, help='Full path to output directory in which the MERGED bam files will be written')
+parser.add_argument('-c', type=str, metavar='Number_of_mapping_cores', required=True, help="Number_of_cores")
+parser.add_argument('-m', type=str, metavar='Number_of_Gb', required=True, help="number of gigabytes of memory")
 parser.add_argument('-s', type=str, metavar='path_to_speedseq_directory', default="/home/hirschc1/pmonnaha/software/speedseq/")
 args = parser.parse_args()
 
