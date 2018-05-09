@@ -8,6 +8,7 @@ Purpose: This script generates commands for svtools genotype and svtools copynum
     -v :  REQUIRED: merged vcf file resulting from svtools lmerge.  The portion of the prefix denoting the reference should match the specification in the bam file names.
     -c :  REQUIRED: path to coordinates file created via "create_coordinates -i merged.vcf -o coord_file"
     -w :  window size in which CNVnator will calculate depth
+    -s :  path to speedseq directory
 """
 
 # Import all necessary modules
@@ -22,6 +23,7 @@ parser.add_argument('-o', type=str, metavar='output_directory', required=True, h
 parser.add_argument('-v', type=str, metavar='merged_vcf', required=True, help='merged vcf file resulting from svtools lmerge.  The portion of the prefix denoting the reference should match the specification in the bam file names.')
 parser.add_argument('-c', type=str, metavar='coord_file', required=True, help='path to coordinates file created via "create_coordinates -i merged.vcf -o coord_file"')
 parser.add_argument('-w', type=str, metavar='window_size', default="100", help='window size in which CNVnator will calculate depth')
+parser.add_argument('-s', type=str, metavar='path_to_speedseq_directory', default="/home/hirschc1/pmonnaha/software/speedseq/")
 args = parser.parse_args()
 
 
@@ -42,5 +44,5 @@ for bam in os.listdir(args.b):
         ref = bam.split("_")[1] 
         sample = bam.split("_")[0]
         if ref in args.v: # Only use the bams that pertain to the same reference genome in the merged vcf file
-            print("zcat " + args.v + " | vawk --header '{  $6=\".\"; print }' | svtools genotype -B " + bam + " -l " + bam + r".json | sed 's/PR...=[0-9\.e,-]*\(;\)\{0,1\}\(\t\)\{0,1\}/\2/g' - > " + args.o + "gt/" + bam.strip(".bam") + ".vcf && svtools copynumber --cnvnator cnvnator-multi -s " + sample + " -w " + args.w + " -r " + args.b + bam.strip(".bam") + " -c " + args.c + " -i " + args.o + "gt/" + bam.strip(".bam") + ".vcf" > args.o + "cn/" + bam.strip(".bam") + ".vcf")
+            print("zcat " + args.v + " | vawk --header '{  $6=\".\"; print }' | svtools genotype -B " + bam + " -l " + bam + r".json | sed 's/PR...=[0-9\.e,-]*\(;\)\{0,1\}\(\t\)\{0,1\}/\2/g' - > " + args.o + "gt/" + bam.strip(".bam") + ".vcf && svtools copynumber --cnvnator " + args.s + "bin/cnvnator -s " + sample + " -w " + args.w + " -r " + args.b + bam.strip(".bam") + " -c " + args.c + " -i " + args.o + "gt/" + bam.strip(".bam") + ".vcf" > args.o + "cn/" + bam.strip(".bam") + ".vcf")
 
