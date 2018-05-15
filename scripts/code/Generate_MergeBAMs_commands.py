@@ -43,30 +43,32 @@ with open(args.r, 'r') as ref_file:
     for line in ref_file:
         REFS[line.split()[0]] = line.split()[1]
 
+
 # Main loop to write commands
 for samp,bams in samps.items():
     for ref, refpath in REFS.items():
         out_prefix = samp + "_" + ref
         BAM_string = ""
-        for bam in bams:
-            tmp_name = bam + "_" + ref
-            tmpdir = args.o + tmp_name + "/"
-            bam_name = [s for s in os.listdir(args.b) if bam in s and "splt" not in s and "disc" not in s]
-            
-            assert len(bam_name) == 1, "Found multiple files corresponding to %r" % bam
+        if len(bams) > 0: # At least one bam exists for this sample
+            for bam in bams: # loop over all component bams for same sample
+                tmp_name = bam + "_" + ref
+                if os.path.exists(args.b + tmp_name + "/" + tmp_name + ".bam"): 
+                    BAM_string += args.b + tmp_name + "/" + tmp_name + ".bam "
+                else:
+                    print("Error: Did not find bam file for " + tmp_name + ", " + samp)
 
-            BAM_string += tmpdir + bam_name
+            fin_name = args.o + samp + "_" + ref + '.bam' # Name of final merged bam file
 
-            # Make sure that all of the expected (full, discordant, and split reads) bams exist
-            error = True
-            if os.path.exists(tmpdir + tmp_name + '.bam') and os.path.exists(tmpdir + tmp_name + '.discordants.bam') and os.path.exists(tmpdir + tmp_name + '.splitters.bam'):
-                error = False
-            assert error is False, "Did not find all bams (full, discordant, and split reads) for fastq file: %r" % bam
+            if BAM_string != "":
+                # Write commands for merging bams within a sample.  Three commands per fastq are needed as each fastq produces a full, discordant-read, and split-read bam.
+                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
+                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam", ".discordants.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam'))
+                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam", ".splitters.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam'))
+            else:
+                print("Error: No bams found for sample: " + samp)
 
-        fin_name = args.o + samp + "_" + ref + '.bam' # Name of final merged bam file
-
-        # Write commands for merging bams within a sample.  Three commands per fastq are needed as each fastq produces a full, discordant-read, and split-read bam.
-        print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + ' && rm ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
-        print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam", ".discordants.bam") + ' && rm ' + BAM_string.replace(".bam", ".discordants.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam'))
-        print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam", ".splitters.bam") + ' && rm ' + BAM_string.replace(".bam", ".splitters.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam'))
+    ## Risky way to do this ... deletes component files immediately after merging ... should only proceed if merge was successful though ... make sure to try out on copied subset of data...
+            # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + ' && rm ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
+            # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam", ".discordants.bam") + ' && rm ' + BAM_string.replace(".bam", ".discordants.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam'))
+            # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam", ".splitters.bam") + ' && rm ' + BAM_string.replace(".bam", ".splitters.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam'))
 
