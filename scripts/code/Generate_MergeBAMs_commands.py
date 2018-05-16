@@ -49,23 +49,30 @@ for samp,bams in samps.items():
     for ref, refpath in REFS.items():
         out_prefix = samp + "_" + ref
         BAM_string = ""
-        if len(bams) > 0: # At least one bam exists for this sample
+        missing = []
+        found = 0
+        if len(bams) > 0: # At least one bam is expected for this sample
             for bam in bams: # loop over all component bams for same sample
                 tmp_name = bam + "_" + ref
-                if os.path.exists(args.b + tmp_name + "/" + tmp_name + ".bam"): 
+                if os.path.exists(args.b + tmp_name + "/" + tmp_name + ".bam"):
                     BAM_string += args.b + tmp_name + "/" + tmp_name + ".bam "
+                    found += 1
                 else:
-                    print("Error: Did not find bam file for " + tmp_name + ", " + samp)
+                    missing.append(bam)
 
             fin_name = args.o + samp + "_" + ref + '.bam' # Name of final merged bam file
 
-            if BAM_string != "":
-                # Write commands for merging bams within a sample.  Three commands per fastq are needed as each fastq produces a full, discordant-read, and split-read bam.
-                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
-                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam", ".discordants.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam'))
-                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam", ".splitters.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam'))
-            else:
-                print("Error: No bams found for sample: " + samp)
+            if found > 1: # Write commands for merging bams within a sample.  Three commands per fastq are needed as each fastq produces a full, discordant-read, and split-read bam.
+                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name + ' && echo "' + fin_name + ' MERGE SUCCESSFUL"')
+                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam ", ".discordants.bam ") + "&& /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam') + ' && echo "' + fin_name.replace('.bam', '.disc.bam') + ' MERGE SUCCESSFUL"')
+                print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam ", ".splitters.bam ") + "&& /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam') + ' && echo "' + fin_name.replace('.bam', '.splt.bam') + ' MERGE SUCCESSFUL"')
+            elif found == 1: # sambamba merge will fail if only one input bam is provided.  in this case, we will just rename the input bam to the output bam name
+                print('mv ' + BAM_string + " " + fin_name)
+                print('mv ' + BAM_string.replace(".bam", ".discordants.bam") + fin_name.replace('.bam','.disc.bam '))
+                print('mv ' + BAM_string.replace(".bam", ".splitters.bam") + fin_name.replace('.bam','.splt.bam '))
+            if missing != []:
+                print("Error: Did not find all bams for " + samp + ". Missing bams " + str(missing)) 
+
 
     ## Risky way to do this ... deletes component files immediately after merging ... should only proceed if merge was successful though ... make sure to try out on copied subset of data...
             # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + ' && rm ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
