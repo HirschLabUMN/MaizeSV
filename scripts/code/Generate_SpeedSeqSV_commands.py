@@ -41,4 +41,4 @@ for file in os.listdir(args.b):
         ref = bam_name.split("_")[1]
 
         # Print speedseq sv command.  
-        print(args.s + "bin/speedseq sv -B " + file + " -S " + bam_name + ".splt.bam -D " + bam_name + ".disc.bam -R " + REFS[ref][0] + " -x " + REFS[ref][1] + " -o " + args.o + bam_name + " -t " + args.c + " -T " + args.b + bam_name + " -v -d -P -g -k")
+        print(args.s + "bin/speedseq sv -B " + args.b + file + " -S " + args.b + bam_name + ".splt.bam -D " + args.b + bam_name + ".disc.bam -R " + REFS[ref][0] + " -x " + REFS[ref][1] + " -o " + args.o + bam_name + " -t " + args.c + " -T " + args.b + bam_name + " -v -d -P -g -k")
