@@ -41,4 +41,11 @@ for file in os.listdir(args.b):
         ref = bam_name.split("_")[1]
 
         # Print speedseq sv command.  
-        print(args.s + "bin/speedseq sv -B " + args.b + file + " -S " + args.b + bam_name + ".splt.bam -D " + args.b + bam_name + ".disc.bam -R " + REFS[ref][0] + " -x " + REFS[ref][1] + " -o " + args.o + bam_name + " -t " + args.c + " -T " + args.b + bam_name + " -v -d -P -g -k")
+        cmd = args.s + "bin/speedseq sv -B " + args.b + file + " -S " + args.b + bam_name + ".splt.bam -D " + args.b + bam_name + ".disc.bam -R " + REFS[ref][0] + " -x " + REFS[ref][1] + " -o " + args.o + bam_name + " -K " + args.s + "bin/speedseq." + ref + ".config -t " + args.c + " -T " + args.o + bam_name + "_tmp -v -d -P -g -k"
+
+        if os.path.exists(args.o + bam_name + ".sv.vcf.gz"):
+            cmd = "Error: Output file already exists; " + cmd
+
+        print(cmd)
+
+

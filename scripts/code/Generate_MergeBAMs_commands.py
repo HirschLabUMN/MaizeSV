@@ -70,15 +70,10 @@ for samp,bams in samps.items():
                     cmd += " && rm " + BAM_string + " && rm " + BAM_string.replace(".bam", ".discordants.bam") + " && rm " + BAM_string.replace(".bam", ".splitters.bam")
 
             elif found == 1: # sambamba merge will fail if only one input bam is provided.  in this case, we will just rename the input bam to the output bam name
-                cmd = 'mv ' + BAM_string + " " + fin_name + '; mv ' + BAM_string.replace(".bam", ".discordants.bam") + fin_name.replace('.bam','.disc.bam ') + '; mv ' + BAM_string.replace(".bam", ".splitters.bam") + fin_name.replace('.bam','.splt.bam ')
+                cmd = 'mv ' + BAM_string + " " + fin_name + '; mv ' + BAM_string.replace(".bam", ".discordants.bam") + fin_name.replace('.bam','.disc.bam ') + '; mv ' + BAM_string.replace(".bam", ".splitters.bam") + fin_name.replace('.bam','.splt.bam ') + "&& /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam') + "&& /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam') + ' && echo "' + fin_name + ' MERGE SUCCESSFUL"'
             if missing != []:
                 cmd = "Error: Did not find bams " + str(missing) + " for " + samp + ". " + cmd
-
+            if os.path.exists(fin_name):
+                cmd = "Error: " + fin_name + " already exists; " + cmd
             print(cmd)
-
-
-    ## Risky way to do this ... deletes component files immediately after merging ... should only proceed if merge was successful though ... make sure to try out on copied subset of data...
-            # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name + ' ' + BAM_string + ' && rm ' + BAM_string + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name)
-            # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.disc.bam ') + BAM_string.replace(".bam", ".discordants.bam") + ' && rm ' + BAM_string.replace(".bam", ".discordants.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.disc.bam'))
-            # print(args.s + 'bin/sambamba merge -t ' + args.c + " " + fin_name.replace('.bam','.splt.bam ') + BAM_string.replace(".bam", ".splitters.bam") + ' && rm ' + BAM_string.replace(".bam", ".splitters.bam") + " && /home/hirschc1/pmonnaha/software/speedseq/bin/sambamba index -t " + args.c + " " + fin_name.replace('.bam', '.splt.bam'))
 

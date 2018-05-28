@@ -12,7 +12,7 @@ This script implements svtools lsort and lmerge to combine variants across multi
 individual VCFs generated with speedseq sv. All arguments are required and must 
 follow correct order.
 
-vcf_dir: intputdirectory containing per-individual VCFs.  If you have called 
+vcf_dir: intput directory containing per-individual VCFs.  If you have called 
 		SVs against multiple reference genomes, create separate 
 		directories for each reference and call the script once per
 		input directory
