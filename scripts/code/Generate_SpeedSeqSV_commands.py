@@ -19,6 +19,7 @@ parser.add_argument('-r', type=str, metavar='Reference_Path_Key', required=True,
 parser.add_argument('-o', type=str, metavar='output_directory', required=True, help='Full path to output directory in which the per-individual vcf files will be written')
 parser.add_argument('-c', type=str, metavar='Number_of_cores', required=True, help="Number_of_cores")
 parser.add_argument('-s', type=str, metavar='path_to_speedseq_directory', default="/home/hirschc1/pmonnaha/software/speedseq/")
+parser.add_argument('-w', type=str, metavar='window_size', default="300")
 args = parser.parse_args()
 
 
@@ -41,7 +42,7 @@ for file in os.listdir(args.b):
         ref = bam_name.split("_")[1]
 
         # Print speedseq sv command.  
-        cmd = args.s + "bin/speedseq sv -B " + args.b + file + " -S " + args.b + bam_name + ".splt.bam -D " + args.b + bam_name + ".disc.bam -R " + REFS[ref][0] + " -x " + REFS[ref][1] + " -o " + args.o + bam_name + " -K " + args.s + "bin/speedseq." + ref + ".config -t " + args.c + " -T " + args.o + bam_name + "_tmp -v -d -P -g -k"
+        cmd = args.s + "bin/speedseq sv -B " + args.b + file + " -S " + args.b + bam_name + ".splt.bam -D " + args.b + bam_name + ".disc.bam -R " + REFS[ref][0] + " -x " + REFS[ref][1] + " -o " + args.o + bam_name + " -K " + args.s + "bin/speedseq." + ref + ".config -t " + args.c + " -T " + args.o + bam_name + "_tmp -w " + args.w + " -v -d -P -g -k"
 
         if os.path.exists(args.o + bam_name + ".sv.vcf.gz"):
             cmd = "Error: Output file already exists; " + cmd
