@@ -1,0 +1,4 @@
+B73v4 /home/hirschc1/pmonnaha/references/B73_chr1-10.fasta /home/hirschc1/pmonnaha/misc-files/B73.NonGenicMask.bed
+PH207 /home/hirschc1/pmonnaha/references/PH207_chr1-10.fasta /home/hirschc1/pmonnaha/misc-files/PH207.NonGenicMask.bed
+W22v12 /home/hirschc1/pmonnaha/references/W22_chr1-10.fasta /home/hirschc1/pmonnaha/misc-files/W22v12.NonGenicMask.bed
+PHB47 /home/hirschc1/pmonnaha/references/PHB47_chr1-10.fasta /home/hirschc1/pmonnaha/misc-files/PHB47.NonGenicMask.bed

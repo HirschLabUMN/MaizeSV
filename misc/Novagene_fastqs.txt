@@ -1,0 +1,12 @@
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1341_DSW61005-V_HK7CLCCXY_L3_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1342_DSW61006-V_HK7CLCCXY_L3_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1343_DSW61007-V_HK7CLCCXY_L3_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1344_DSW61008-V_HK7CLCCXY_L3_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1346_DSW61009-V_HK7CLCCXY_L3_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1347_DSW61010-V-1_HK5WMCCXY_L7_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1348_DSW61011-V_HK7CLCCXY_L7_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1349_DSW61012-V_HK7CLCCXY_L7_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1350_DSW61013-V_HK7CLCCXY_L7_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1351_DSW61014-V_HK7CLCCXY_L6_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1353_DSW61015-V_HK7CLCCXY_L6_1.fq.gz
+/panfs/roc/groups/14/hirschc1/shared/Archive/reads/WiDiv/set1/GH17_1354_DSW61016-V_HK7CLCCXY_L7_1.fq.gz
