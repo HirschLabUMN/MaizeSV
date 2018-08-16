@@ -21,15 +21,18 @@ EOF
 fi
 
 
-
+#VCF functionality has not been tested!!!
 while IFS="," read -r VCF BED EXT; do
 	if [[ -z "$EXT" ]]; then
 		echo "${3} -b ${BED} -i ${VCF} --anno_distance ${2} -o ${VCF%.vcf}.${2}annt.vcf"
-    	$3 -b $BED -i $VCF --anno_distance $2 -o ${VCF%.vcf}.${2}annt.vcf
+    	$3 -b $BED -i $VCF --anno_distance $2 -o ${VCF%.vcf}.${2}tmp.vcf
+        awk '/^##INFO=<ID=SVTYPE/ { printf("##INFO=<ID=overlapped_Annotations,Number=.,Type=String,Description=\"Overlapped Annotations\">\n");} {print;}' ${VCF%.vcf}.${2}tmp.vcf > ${VCF%.vcf}.${2}annt.vcf 
+        rm ${VCF%.vcf}.${2}tmp.vcf
     else
     	EXT1=($(echo $EXT | tr '\t' ','))
     	echo "${3} -b ${BED} -i ${VCF} --anno_distance ${2} -o ${VCF%.vcf}.${2}annt.vcf"
     	$3 -b $BED -i $VCF --anno_distance $2 -o ${VCF%.vcf}.${2}annt.vcf -v $EXT1
     fi
+
 done < "$1"
 

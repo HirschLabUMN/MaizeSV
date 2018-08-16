@@ -41,7 +41,7 @@ with open(args.gff, 'r') as gff:
 							print(chrom + "\t0\t" + str(int(start) - args.b) + "\n")
 							first_gene = False
 						else:
-							print(chrom + "\t" + str(int(old_stop) + args.b) + "\t" + str(int(start) - 2000) + "\n")
+							print(chrom + "\t" + str(int(old_stop) + args.b) + "\t" + str(int(start) - args.b) + "\n")
 				
 				# This catches a gene entry after moving on to new chromosome
 				elif line[2] == "gene" and chrom != current_chrom: 

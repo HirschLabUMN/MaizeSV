@@ -65,7 +65,7 @@ for samp,fqs in samps.items():
             tmpdir = args.o + tmp_name + "/"
 
             # Write speedseq command.  
-            print('mkdir -p ' + tmpdir + ';' + args.s + 'bin/speedseq align -M ' + args.m + ' -t ' + args.c + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" -T ' + tmpdir + 'tmp -o ' + tmpdir + tmp_name + " " + refpath + " " + args.f + FQs[0] + " " + args.f + FQs[1])
+            print('mkdir -p ' + tmpdir + ';' + args.s + 'bin/speedseq align -M ' + args.m + ' -t ' + args.c + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" -T ' + tmpdir + 'tmp -o ' + tmpdir + tmp_name + " " + refpath + " " + args.f + FQs[0] + " " + args.f + FQs[1] + ' && echo "' + tmp_name + " SUCCESSFUL")
 
 
 

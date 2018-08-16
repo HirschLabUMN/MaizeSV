@@ -1,0 +1,246 @@
+---
+title: "Investigating SVtools and Genome STRiP output"
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggridges)
+require(ggplot2)
+require(dplyr)
+require(stringr)
+require(scales)
+require(reshape2)
+
+#Number of singletons per sample
+lumps = read.table("~/Documents/Research/MaizeSV/data/Lumpy_singletons_pre-classify.txt", head = T)
+
+lsizes = read.table("~/Documents/Research/MaizeSV/data/Lumpy_sizeNsamps_E2_p00_w300_d500.txt", head=T)
+
+lsum = lsizes %>% group_by(ref,stage,type) %>% summarize(n = n(), median = median(size)) %>% as.data.frame()
+
+#Genome STRiP summary files
+gsizes=read.table("~/Documents/Research/MaizeSV/data/gstrip_cnv_sizes.txt")
+gstrip=read.table("~/Documents/Research/MaizeSV/data/gstrip_varPerSamp_defaults.txt", head=T)
+
+#Gene lengths from B73 gff
+b73_geneLengths=read.table("~/Documents/Research/MaizeSV/data/B73_gene_lengths.txt")
+
+# Number of variants per gene
+bgenes=read.table("~/Documents/Research/MaizeSV/data/B73_genes_Variants_start2.txt")
+
+# Confidence interval lengths from Lumpy for different values of -p during lmerge stage
+ci=read.table("~/Documents/Research/MaizeSV/data/CI_lengths_W22_All.txt")
+#Remove BND mates to enable find nearest-neighbor distance and sort
+ci=ci[ci$V2=="chr1",]
+ci=ci[order(ci$V1,ci$V3),]
+
+#Find distance to nearest neighbor variant
+ci = ci %>%
+group_by(V1) %>%
+mutate(diff = pmin(abs(V3 - lag(V3)), abs(V3 - lead(V3)))) %>% as.data.frame()
+
+ci=ci[ci$V1==c("pre","00","05","10","30"),]
+ci$V1=factor(ci$V1,levels=c("30","10","05","00","pre"))
+
+#Number of variants per sample for Lumpy
+vps=read.table("~/Documents/Research/MaizeSV/data/variant_counts_per_sample.txt")
+vps['Sample']=vps$V1
+vps['Ref']=vps$V2
+vps=vps[,c("Sample","V3","Ref")]
+
+dp=read.table("~/Documents/Research/MaizeSV/data/Samtools_depth2.txt",head=F)
+dp['ref']=str_split_fixed(dp$V1,"_",2)[,2]
+dp['Sample']=str_split_fixed(dp$V1,"_",2)[,1]
+
+cov=dp[dp$V2=="genome",]
+cov=cov[,c("Sample","V3","ref")]
+
+cov['Ref']=str_split_fixed(cov$ref,"\\.",2)[,1]
+cov=cov[,c("Sample","V3","Ref")]
+
+#write.csv(dp2,file="~/Documents/Research/MaizeSV/data/Avg_depth_E2_Bams.csv",quote = F,row.names = F)
+# Min=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],min)
+# Max=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],max)
+# var=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],sd)
+# m=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],mean)
+
+vps=merge(vps,cov,by=c("Sample","Ref"))
+```
+
+Effect of -p (percent slop) on distance to nearest variant during the svtools lmerge step.  Chose -p 0 since it accomplishes most merging without requiring justification for merging variants with non-overlapping CIs
+```{r}
+ggplot(ci,aes(x=diff+1,y=V1))+geom_density_ridges()+scale_x_log10(labels=comma)+ylab("% slop (-p)")+xlab("Distance to Nearest Variant")
+```
+
+
+Number of singletons per sample from Lumpy
+```{r}
+ggplot(lumps,aes(x=n,y=ref))+geom_density_ridges()+xlab("Number of Singletons per sample") + ylab("Reference Genome") + ggtitle("Lumpy - WiDiv E2")
+```
+
+Number of singletons from Genome STRiP using all samples and default parameters
+```{r}
+ggplot(gstrip,aes(x=SINGLETONS,y=ref))+geom_density_ridges()+xlab("Singletons per Sample")+ylab("Reference Genome")
+```
+
+Lumpy: Total number of variants per sample
+```{r}
+ggplot(vps,aes(x=V3.x,fill=Ref))+geom_density(alpha=0.5)+xlab("Number of variants per sample")+guides(fill=guide_legend(title="Reference"))
+```
+
+Genome STRiP: Total number of variants per sample
+```{r}
+ggplot(gstrip,aes(x=VARIANTS,fill=ref))+geom_density(alpha=0.5)+xlab("Variants per Sample")+ylab("")+guides(fill=guide_legend(title="Reference"))
+```
+
+
+Lumpy: Variants per sample depends more strongly on depth for B73 and PH207
+```{r}
+ggplot(vps, aes(x=V3.y, y=V3.x, color=Ref)) + geom_smooth(method="lm", fill=NA) + geom_point() + xlab("Depth") + ylab("Number of Variants")
+```
+
+Lumpy: Total number of Variants across stages of svtools pipeline
+```{r}
+ggplot(lsum, aes(x=type, color=ref, shape=stage, y=n)) + geom_point(position=position_dodge(width = 0.2)) + ylab("Total number of variants") + scale_y_log10() + xlab("") + ggtitle("Lumpy/SVtools pipeline")
+```
+
+Lumpy: size distribution across the svtools stages
+```{r}
+ggplot(lsizes, aes(x=abs(size)/1000, y=ref, fill=stage)) + geom_density_ridges(alpha=0.5, scale=0.9) + scale_x_log10(labels=comma) + facet_grid(~type) + xlab("Size (kbp)") + ylab("Reference Genome") + theme(axis.text.x = element_text(angle=45, hjust=1))
+
+ggplot(lsum, aes(x=type, color=ref, shape=stage, y=abs(median))) + geom_point(position=position_dodge(width = 0.2)) + ylab("Median size of SVs") + scale_y_log10() + xlab("") + ggtitle("Lumpy/SVtools pipeline")
+```
+
+The artifactual 500bp deletions correspond to the gaps in the PH207 reference.  These are pretty evenly spread across the chromosome.
+```{r}
+ggplot(lsizes[lsizes$ref=="PH207" & lsizes$stage=="merged" & lsizes$size==-500 & lsizes$chrom=="chr09",], aes(x=pos/1000000, y=1)) + facet_grid(~chrom) + geom_point() + xlab("Position (Mb)") + 
+theme(axis.title.y = element_blank(), axis.text.y = element_blank())
+```
+
+Lumpy: Number of number of samples per variant (co-discovery) by type (x-axis is truncated)
+```{r}
+ggplot(lsizes, aes(x=nsamps, y=ref, fill=stage)) +geom_density_ridges(alpha=0.5, scale=0.9) + facet_grid(~type) + xlab("Samples per variant") + ylab("Reference Genome")
+```
+
+Number of variants per gene as a function of gene size.  What is responsible for highly overcalled genes?  
+```{r}
+
+gb=bgenes %>% group_by(V9) %>% summarise(n = n()) %>% as.data.frame()
+
+gb=bgenes %>% group_by(V9) %>% count(V4) %>% as.data.frame()
+
+colnames(gb)[1]="V1"
+b73=merge(b73_geneLengths,gb, by=c("V1"))
+
+gb1=bgenes %>% filter(V4!="BND") %>%
+group_by(V9) %>%
+summarise(n = n()) %>% as.data.frame()
+colnames(gb1)[1]="V1"
+b73.noBND=merge(b73_geneLengths, gb1, by=c("V1"))
+
+ggplot(b73,aes(x=n))+geom_histogram(bins=70)+xlab("number of variants per gene")+ggtitle("All variants")
+ggplot(b73.noBND,aes(x=n))+geom_histogram(bins=23)+xlab("number of variants per gene")+ggtitle("No BND variants")
+ggplot(b73,aes(x=V2,y=n))+geom_point()+geom_smooth(method="lm")+xlab("Gene Length")+ylab("Number of Variants")+ggtitle("B73 - Lumpy; All Variants")
+ggplot(b73.noBND,aes(x=V2,y=n))+geom_point()+geom_smooth(method="lm")+xlab("Gene Length")+ylab("Number of Variants")+ggtitle("B73 - Lumpy; No BND")
+```
+
+What do the variants look like in overcalled genes?  Some genes contain an abundance of large SVs.  Most genes with >3 variants seem to have at least a few very large SVs as evidenced by the very high standard deviations of SV size.  Neither median SV size nor standard deviation seems aberrant for overcalled genes
+```{r}
+b.sizes=sv10[sv10$V1=="B73v4" & sv10$stage=="pruned",]
+colnames(bgenes)[2]="pos"
+colnames(b.sizes)[3]="pos"
+colnames(b.sizes)[2]="chrom"
+colnames(bgenes)[1]="chrom"
+bgenes$id=paste(bgenes$chrom,bgenes$pos,bgenes$V4)
+bgenes2 = merge(bgenes[bgenes$V4!="BND" & !duplicated(bgenes$id),],b.sizes,by=c("chrom","pos","V4"))
+
+
+gb2=bgenes2 %>% 
+group_by(V9) %>%
+summarise(n = n(),mean=median(abs(V5.y)),sd=sd(abs(V5.y))) %>% as.data.frame()
+
+ggplot()+geom_point(data=gb2,aes(x=n,y=mean,size=sd),alpha=0.2)+scale_y_log10() +xlab("Number of variants")+ggtitle("B73 Genes")+ylab("Median SV size")+scale_size(name="Standard Deviation")
+```
+
+```{r}
+tt=bgenes2[bgenes2$V9=="Zm00001d027392",]
+aa=melt(tt[tt$end<5000000,],id.var=c("id","V4","row"),value.var=c("pos","end"))
+aa=aa[aa$variable=="pos" | aa$variable=="end",]
+aa$value=as.numeric(aa$value)
+ggplot(aa[aa$value<5000000,],aes(x=value,y=row,group=id,color=V4))+geom_line(size=2)+ylab("") + xlab("Position")+ggtitle("Zm00001d027392")+theme(axis.text.y=element_blank())
+
+
+tt=bgenes2[bgenes2$V9=="Zm00001d035960",]
+aa=melt(tt,id.var=c("id","V4","row"),value.var=c("pos","end"))
+aa=aa[aa$variable=="pos" | aa$variable=="end",]
+aa$value=as.numeric(aa$value)
+ggplot(aa[aa$value<70000000,],aes(x=value,y=row,group=id,color=V4))+geom_line(size=2)+ylab("") + xlab("Position")+ggtitle("Zm00001d035960")+theme(axis.text.y=element_blank())
+```
+
+Does overcalling occur in regions that are highly diverse?  No, there is no apparent relationship between snp density and the number of SVs called in a gene.
+```{r}
+gb3=read.csv("~/Documents/Research/MaizeSV/data/b73_VarPerGene_Lumpy_wSNPdensity.csv")
+gb3=gb3[gb3$num_snp!="-9",]
+ggplot(gb3,aes(x=n,y=snp_dens))+geom_point()+xlab("Number of variants") + ylab("SNP Density (#snps/bp)")+ggtitle("Number of SVs versus SNP density for each gene ")
+```
+
+
+
+TE analysis.  Are polymorphic TEs b/n PH207 and B73 generating a lot of SV calls?
+```{r}
+
+#Get chromosome, position and SVtype from a vcf, format as bed file, and determine if it falls within TE boundaries inferred from B73_TE_to_PH207.txt.
+te=read.table("~/Documents/Research/MaizeSV/data/PH207_TE_Variants_start.txt")
+teB=read.table("~/Documents/Research/MaizeSV/data/B73_TE_Variants_start.txt")
+
+#Variants called from B73 mapped to PH207 that are within TEs based on PH207 coordinates…compared to above.
+teb=read.table("~/Documents/Research/MaizeSV/data/B73_TE_Variants_start_b73.txt")
+#Variants called from PH207 mapped to B73 that are within TEs based on B73 coordinates…compared to above.
+tep=read.table("~/Documents/Research/MaizeSV/data/PH207_TE_Variants_start_ph207.txt")
+
+#number of samples per variant 
+bnd=read.table("~/Documents/Research/MaizeSV/data/sv_pruned_nsamps_BND.txt")
+ns=read.table("~/Documents/Research/MaizeSV/data/sv_pruned_nsamps_DELDUP.txt")
+```
+
+How many BNDs are believable? Interchromosomal translocations are not likely nor are intrachromosal events that are very far apart.
+```{r}
+phbnds=read.table("~/Documents/Research/MaizeSV/data/phb47_bnd_mates.txt")
+phb1=phbnds[phbnds$V4==1,]
+phb2=phbnds[phbnds$V4==2,]
+phb=merge(phb1,phb2,by=c("V3"))
+phb.S=phb[phb$V1.x == phb$V1.y,]
+phb.S$dist = abs(phb.S$V2.x - phb.S$V2.y)
+
+nrow(phb) #Interchromosomal events = 70476
+nrow(phb.S) #Intra = 5359
+nrow(phb.S[phb.S$dist < 5000000,]) #Intra events within 5 Mb = 1521
+```
+
+Dependence of the number of variants per sample on parameter settings for Genome STRiP
+```{r}
+w22.b.vps=read.table("~/Documents/Research/MaizeSV/data/w22_gstrip_bigWindows_VariantsPerSample.txt")
+w22.s.vps=read.table("~/Documents/Research/MaizeSV/data/W22_gstrip_BigSamps_smallWindows_VarPerSamp.txt",head=T)
+
+w22.B.vps = w22.b.vps %>% group_by(V1) %>% summarize(VARIANTS=sum(V2),SINGLETONS=sum(V3)) %>% as.data.frame()
+colnames(w22.B.vps)[1]="SAMPLE"
+w22.B.vps$sensitiviy="low"
+w22.s.vps$sensitivity="high"
+w22g$sensitivity="default"
+w22.s.vps$ref="W22"
+w22.B.vps$ref="W22"
+w22.vps=rbind(w22g,w22.s.vps)
+w22.vps=rbind(w22.vps,w22.B.vps)
+
+ggplot(w22.vps,aes(x=VARIANTS,y=sensitivity))+geom_density_ridges()+xlab("Variants per sample")
+ggplot(w22.vps,aes(x=SINGLETONS,y=sensitivity))+geom_density_ridges()+xlab("Singletons per sample")
+```
+
+```{r}
+gs.w22=read.table("~/Documents/Research/MaizeSV/data/w22_SVinfo.txt")
+ggplot(gs.w22,aes(x=V4,fill=V5,y=V1))+geom_density_ridges(alpha=.5)+scale_x_log10()
+```
+

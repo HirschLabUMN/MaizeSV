@@ -1,0 +1,49 @@
+---
+title: "Maize_E2_Depth"
+author: "Patrick Monnahan"
+date: "6/25/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r}
+library(dplyr)
+library(stringr)
+dp=read.table("~/Documents/Research/MaizeSV/data/Samtools_depth.txt",head=F)
+dp['samp']=str_split_fixed(dp$V1,"_",2)[,1]
+dp['Sample']=dp$samp
+names = read.csv("~/Documents/Research/MaizeSV/data/Samples_PJM.csv")
+dp2=merge(dp,names,by="Sample")
+m=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],mean)
+var=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],sd)
+Max=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],max)
+Min=aggregate(V3~Sample,data=dp2[dp2$V2=="genome",],min)
+sum=merge(var,m,by="Sample")
+sum=merge(sum, Min,by="Sample")
+sum=merge(sum, Max,by="Sample",suffixes = c(".min",".max"))
+Sum=sum
+
+```
+
+## Plots
+Per-sample depth
+```{r echo=FALSE}
+ggplot(Sum,aes(y=V3.y,x=Sample))+geom_point() + geom_point(data=Sum,aes(x=Sample,y=V3.min),color="red")+ geom_point(data=Sum,aes(x=Sample,y=V3.max),color="red")+ylab("Genome-wide Depth")theme(axis.text.y=element_text(size=12),axis.text.x=element_text(angle=45,hjust=1))
+
+```
+
+Depth for different data sources
+```{r echo=FALSE}
+ggplot(dp2[dp2$V2=='genome',],aes(x=source,y=V3))+geom_boxplot() + ggtitle("Genome-wide Coverage") + ylab("Depth") + theme(axis.title.x=element_blank(),axis.text.x=element_text(size=16),axis.text.y=element_text(size=14),axis.title.y=element_text(size=16))
+```
+
+Genes versus Genome
+```{r echo=FALSE}
+ggplot(dp2,aes(x=V2,y=V3))+geom_boxplot()+ ggtitle("Coverage - Genes v Genome") + ylab("Depth") + theme(axis.title.x=element_blank(),axis.text.x=element_text(size=16),axis.text.y=element_text(size=14),axis.title.y=element_text(size=16))
+```

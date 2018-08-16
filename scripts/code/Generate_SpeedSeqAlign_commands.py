@@ -58,16 +58,22 @@ for samp,fqs in samps.items():
             FQs.sort() # This should sort the fastqs so that read 1 file appears before read 2
             
             # Check to make sure that the search for fastq files corresponding the name specified by 'fq' uniquely identifies a single paire of forward and reverse read files
+            
             if len(FQs) < 2: 
-                print("Did not find fastq files for " + fq)  
+                print("Error: Did not find fastq files for " + fq)  
             elif len(FQs) > 2: 
-                print("Found multiple sets of fastq files for " + fq)
+                print("Error: Found multiple sets of fastq files for " + fq)
             else:
                 tmp_name = fq + "_" + ref
                 tmpdir = args.o + tmp_name + "/"
+                cmd = 'mkdir -p ' + tmpdir + ';' + args.s + 'bin/speedseq align -M ' + args.m + ' -t ' + args.c + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" -T ' + tmpdir + 'tmp -o ' + tmpdir + tmp_name + " " + refpath + " " + args.f + FQs[0] + " " + args.f + FQs[1] + ' && echo "' + tmp_name + ' SUCCESSFUL"'
+
+                #Check if output BAM files already exist
+                if os.path.exists(tmpdir + tmp_name + ".bam"):
+                    cmd = "Error: Output BAM file already exists for " + tmpdir + tmp_name
 
                 # Write speedseq command.  
-                print('mkdir -p ' + tmpdir + ';' + args.s + 'bin/speedseq align -M ' + args.m + ' -t ' + args.c + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" -T ' + tmpdir + 'tmp -o ' + tmpdir + tmp_name + " " + refpath + " " + args.f + FQs[0] + " " + args.f + FQs[1] + ' && echo "' + tmp_name + ' SUCCESSFUL"')
+                print(cmd)
 
 
 

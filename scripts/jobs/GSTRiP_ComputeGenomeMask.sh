@@ -10,10 +10,10 @@
 # Load necessary modules
 module load parallel
 
-REF_PATH="/home/hirschc1/pmonnaha/JobScripts/accessory/reference_paths.txt" # This should be the same reference_paths.txt key that was used in mapping and merging code
+REF_PATH="/home/hirschc1/pmonnaha/JobScripts/accessory/reference_paths.txt" # reference paths...one per line. 
 OUT="/home/hirschc1/pmonnaha/misc-files/gstrip/" # Metadata directory
 
-REFS=( $(awk '{print $2}' $REF_PATH) ) # Get second column from reference_paths.txt which contain the path to reference files
+REFS=( $(awk '{print $1}' $REF_PATH) ) # Get second column from reference_paths.txt which contain the path to reference files
 
 for REF in "${REFS[@]}";do	# Loop over references
 	# Set directory and commands for ComputeGenomeMask

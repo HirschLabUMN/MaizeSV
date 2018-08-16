@@ -1,0 +1,49 @@
+---
+title: "SV software overlap"
+author: "Patrick Monnahan"
+date: "8/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+require(data.table)
+require(limma)
+require(dplyr)
+
+#grep -e DEL -e DUP -e INV -e MEI mergeSVcallers*.vcf | vawk '{split($1,a,"\."); print a[3],$2,$3,I$NCOL,I$TAGS}' > software.overlap.E2.txt
+Ovl = read.table("~/Documents/Research/MaizeSV/data/software.overlap.E2.txt", header=T)
+ro = read.table("~/Documents/Research/MaizeSV/data/merged_npz_refOverlap2.txt")
+setnames(ro, old = c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","V11","V12","V13","V14","V15","V16","V17","V18","V19"), new = c("ref1","ref2","id1","chrom1","pos1","end1","gene1","id2","chrom2","pos2","end2","gene2","info","type1","type2","len1","len2","sup1","sup2"))
+
+
+ro = ro %>% mutate(dist = abs(len1 - len2) / pmin(len1, len2)) %>% as.data.frame()
+
+
+```
+
+
+```{r echo=F}
+ovl = Ovl %>% mutate(caller = strsplit(as.character(caller), ",")) %>% unnest(caller)
+ovl = dcast(ovl, ref + chrom + pos + type + supp ~ caller)
+vennDiagram(vennCounts(ovl[ovl$ref == "w22",c(6,7,8,9)]),main="W22")
+vennDiagram(vennCounts(ovl[ovl$ref == "phb47",c(6,7,8,9)]),main="PHB47")
+vennDiagram(vennCounts(ovl[ovl$ref == "ph207",c(6,7,8,9)]),main="PH207")
+vennDiagram(vennCounts(ovl[ovl$ref == "b73",c(6,7,8,9)]),main="B73")
+```
+
+#distribution of support across different types of SVs
+```{r}
+ggplot(ovl, aes(y=ref,x=supp,fill=type))+ geom_density_ridges2(alpha=0.4) + xlab("Support")
+
+ovl2 = ovl %>% group_by(ref,type) %>% 
+     summarize(lumpsum = sum(LUMPY),
+             dsum = sum(GS.D),
+              lsum = sum(GS.L),hsum=sum(GS.H)) %>% as.data.frame()
+```
+
+How many matches per gene
+```{r}
+
+```
+

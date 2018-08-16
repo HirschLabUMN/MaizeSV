@@ -16,7 +16,7 @@ export PATH=${SV_DIR}:${PATH}
 export LD_LIBRARY_PATH=/panfs/roc/msisoft/libdrmaa/1.0.13/lib/:${LD_LIBRARY_PATH}
 
 # Ensure that arguments are passed to script, if not display help
-if [ "$#" -ne 9 ]; then
+if [ "$#" -ne 6 ]; then
 cat << EOF
 
 This script implements Genome STRiP's SVGenotyper Pipeline.  All arguments are required and must 
@@ -66,13 +66,14 @@ classpath="${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:$
 java -Xmx${MEM}g -cp ${classpath} \
      org.broadinstitute.gatk.queue.QCommandLine \
      -S ${SV_DIR}/qscript/SVGenotyper.q \
-     -S ${SV_DIR}/qscript/SVQScript.q \ 
+     -S ${SV_DIR}/qscript/SVQScript.q \
      -cp ${classpath} \
      -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar \
      -configFile ${SV_DIR}/conf/genstrip_parameters.txt \
      -R /home/hirschc1/pmonnaha/misc-files/gstrip/${REF}_chr1-10.fasta \
      -I ${BAM_LIST} \
-     -O ${OUT}/${NAME}
+     -O ${OUT}/${NAME} \
+     -vcf ${VCF} \
      -md /home/hirschc1/pmonnaha/misc-files/gstrip/${REF}_MetaData_E2-0 \
      -md /home/hirschc1/pmonnaha/misc-files/gstrip/${REF}_MetaData_E2-1 \
      -md /home/hirschc1/pmonnaha/misc-files/gstrip/${REF}_MetaData_E2-2 \
