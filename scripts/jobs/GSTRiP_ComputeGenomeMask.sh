@@ -9,6 +9,7 @@
 
 # Load necessary modules
 module load parallel
+module load samtools/1.6
 
 REF_PATH="/home/hirschc1/pmonnaha/JobScripts/accessory/reference_paths.txt" # reference paths...one per line. 
 OUT="/home/hirschc1/pmonnaha/misc-files/gstrip/" # Metadata directory
@@ -33,5 +34,6 @@ done
 # Combine all of the per-chromosome masks within a reference
 for f in "${REFS[@]}";do 
 	NAME=$(basename $REF | cut -d "_" -f 1);
-	cat "${OUT}""${NAME}".*.mask.fa >> "${OUT}""${NAME}".mask.fa | parallel --jobs 10 --sshloginfile ${PBS_NODEFILE} --workdir ${PWD};
+	cat "${OUT}""${NAME}".*.mask.fa >> "${OUT}""${NAME}".mask.fa | parallel --jobs 10 --sshloginfile ${PBS_NODEFILE} --workdir ${PWD}
+	samtools faidx "${OUT}""${NAME}".mask.fa;
 done

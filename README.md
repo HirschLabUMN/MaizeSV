@@ -305,30 +305,23 @@ vcf_dir is the input directory containing per-individual VCFs.  If you have call
 
 ### Genome STRiP
 
-Prior to running Genome STRiP, you have to create a “MetaData Bundle” for each reference.  Create an empty folder and create/place the files below into this directory.  Italic text below is taken directly from: http://software.broadinstitute.org/software/genomestrip/.  The metadata bundles contain:
+Many of the Genome STRiP utilities rely on a script called Queue.jar that will automatically launch and manage a large number of (grand)child processes.  In order for these to run, they must inherit the environment from the parent job.  One way to accomplish this is to modify your _~/.bashrc_ profile, so that all necessary paths and softwares are loaded every time a job is launched under your username.  For me, the following lines were added to _~/.bashrc_:
 
-#### reference.fasta
-_The reference genome sequence (and accompanying index file in reference.fasta.fai)._
+    module load htslib
+    module load samtools
+    module load liblzma
+    module load java/jdk1.8.0_144
+    SV_DIR="/home/hirschc1/pmonnaha/software/svtoolkit"
+    export LD_LIBRARY_PATH=${SV_DIR}:${LD_LIBRARY_PATH}
+    export SV_DIR
+    export PATH=${SV_DIR}:${PATH}
+    export LD_LIBRARY_PATH=/panfs/roc/msisoft/libdrmaa/1.0.13/lib/:${LD_LIBRARY_PATH}
 
-You must also index the fasta using bwa index.  However, you have to use the bwa version that ships with Genome STRiP.
+Prior to running Genome STRiP, you also have to create a “MetaData Bundle” for each reference.  See [Genome STRiP: Preparing a reference](scripts/GSTRiP_RefPrep.md)
 
-    ~/software/svtoolkit/bwa/bwa index -a bwtsw B73_chr1-10.fasta
 
-#### reference.ploidymap.txt
-_This file specifies the gender-dependent normal ploidy of each segment of the reference genome and is used in structural variation calling on the sex chromosomes. In humans, this file flags the Y chromosome as being present only in males and indicates that the X chromosome differs in normal copy number based on the sex of the individual (except for the pseudo-autosomal regions). The structure of this file is current human-centric._
 
-For a hermaphroditic species, these files simply contain the following single line:
 
-    * * * * 2
-
-#### reference.svmask.fasta
-
-_A genome alignability mask (in indexed fasta format) that is used to deterimine whether reference sequence should be considered to be uniquely alignable.
-This mask is computed based on the reference genome and a default k-mer length and indicates whether a k-mer centered on each position of the reference genome has a unique mapping to the reference. The k-mer length is defaulted in each reference metadata bundle, but this mask can be overridden if necessary for specific data sets._
-
-_This file is usually present in each reference metadata bundle as a symbolic link to a file whose name specifies the k-mer length used to compute the mask._
-
-Wrote job script to run Genome STRiP utility (ComputeGenomeMask).  Parallelizes by scaffold.  Change file to point to file containing paths to references that you want to perform operation on.  One path per line.
 
 ### Notes
 
