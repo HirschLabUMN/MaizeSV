@@ -210,9 +210,9 @@ This will produce a number of files named _speedseq_commands_X_ where X will be 
 The script  **Generate_MergeBAMs_commands.py**  in _./scripts/code/_ can be used to generate commands to merge bams with _sambamba:_
 
     python Generate_MergeBAMs_commands.py -k _sample_fastq_key_  \
-    -o _output_directory_ \
-    -r reference_path_file \
-    -c _number_of_cores_  > _sambamba_command_file_
+      -o _output_directory_ \
+      -r reference_path_file \
+      -c _number_of_cores_  > _sambamba_command_file_
 
 Run _sambamba_  commands as task array implemented in ./scripts/jobs/ **Sambamba_MergeBAMs.sh**.  Be sure to open **Sambamba_MergeBAMs.sh** __ and modify paths where necessary.  ALSO, be sure to modify the ‘ppn’ field to reflect the number of cores specified with **Generate_MergeBAMs_commands.py** and also adjust the ‘mem’ field appropriately. 
 
@@ -226,6 +226,10 @@ To create the bed files that will contain the non-genic regions to be excluded f
     python make_nongenic_bed.py -gff gff_file -b buffer_size > {REF}.NonGenicMask.bed
 
 The -b option specifies a buffer on either side of gene boundary.  E.g Gene1 ends at 100bp and Gene2 starts at 500bp.  If b=10, then the non-genic region will be 110-490.  Current analysis are being done with -b 2000.
+
+While Lumpy requires a bed file specifying regions to *exclude*, Genome STRiP wants a _.list_ file of regions to *include*.  To make these _.list_ files, do:
+
+    python make_genic_bed.py -gff gff_file -b buffer_size > {REF}.genic.list
 
 ### Lumpy
 
@@ -242,10 +246,10 @@ Note: Make certain to run speedseq sv using the following options: -v -d -P -g -
 To generate commands for speedseq sv, use the script ./scripts/code/Generate_SpeedSeqSV_commands.py:
 
     python Generate_SpeedSeqSV_commands.py -b bam_directory \
-    -r reference_path_file \
-    -o output_directory \
-    -c number_of_cores \
-    -s speedseq_directory
+      -r reference_path_file \
+      -o output_directory \
+      -c number_of_cores \
+      -s speedseq_directory
 
 The reference_path_file is the same as before, but with an additional column containing the path to the non-genic bed files created with make_nongenic_bed.py.
 
@@ -282,12 +286,12 @@ _create_coordinates_ is a script that ships with svtools and should install as a
 To generate commands for svtools genotype and svtools copynumber use the script in ./scripts/code/Generate_SVtools_Genotype_commands.py
 
     python Generate_SVtools_Genotype_commands.py \
-    -b bam_directory_used_in_speedseq_sv \
-    -o output_directory \
-    -v merged_ref.vcf.gz \
-    -c ref_coordinates_file \
-    -s path_to_speedseq_software_directory \
-    -w window_size >> svtools_genotype_commands_file
+      -b bam_directory_used_in_speedseq_sv \
+      -o output_directory \
+      -v merged_ref.vcf.gz \
+      -c ref_coordinates_file \
+      -s path_to_speedseq_software_directory \
+      -w window_size >> svtools_genotype_commands_file
 You will need to run this once for each merged_ref.vcf.  These commands can be run using ./scripts/jobs/SVtools_Genotype.sh, which uses GNU parallel.  They can also be split and run as multiple GNU parallel jobs via a task array as we did with Speedseq_large.sh.
 
 NOTE: The ‘>>’ will append commands to a file, so if an older file already exists, you should delete the older file before running this script.
@@ -307,10 +311,11 @@ vcf_dir is the input directory containing per-individual VCFs.  If you have call
 
 Many of the Genome STRiP utilities rely on a script called Queue.jar that will automatically launch and manage a large number of (grand)child processes.  In order for these to run, they must inherit the environment from the parent job.  One way to accomplish this is to modify your _~/.bashrc_ profile, so that all necessary paths and softwares are loaded every time a job is launched under your username.  For me, the following lines were added to _~/.bashrc_:
 
-    module load htslib
+    module load htslib/1.6
     module load samtools
     module load liblzma
     module load java/jdk1.8.0_144
+    module load libdrmaa/1.0.13
     SV_DIR="/home/hirschc1/pmonnaha/software/svtoolkit"
     export LD_LIBRARY_PATH=${SV_DIR}:${LD_LIBRARY_PATH}
     export SV_DIR
@@ -319,8 +324,73 @@ Many of the Genome STRiP utilities rely on a script called Queue.jar that will a
 
 Prior to running Genome STRiP, you also have to create a “MetaData Bundle” for each reference.  See [Genome STRiP: Preparing a reference](scripts/GSTRiP_RefPrep.md)
 
+Once the MetaData bundle is complete, the CNVDiscoveryPipeline can be run with *GSTRiP_CNVDiscoveryPipeline.sh*. All arguments are required and must 
+follow correct order.  User should also specify queue and requested resources via command line.  See note below for use of default values.
 
+Usage:
 
+    qsub GSTRiP_CNVDiscovery.sh -F \"refName outDir memGb bamListFile tilingWindowSize tilingWindowOverlap maximumReferenceGapLength boundaryPrecision minimumRefinedLength\"
+refName: e.g. W22, B73, PH207, or PHB47.  Paths are hardcoded.  Change if necessary.
+outDir: Output Directory
+memGb: number of Gb of RAM for CNVDiscovery to request.  This should be about 2Gb less than requested from the HPC (e.g. qsub ... -l mem=...)
+bamListFile: file containing list of bams to include in the analysis.  Must end with _.list_
+
+Remaining parameters will control sensitivity and should be calibrated for the mean coverage across samples.  Generally, larger values will reduce sensitivity and increase the minimum detectable size of SVs (the final parameter listed below).  These correspond to the _tilingWindowSize_, _tilingWindowOverlap_, _maximumReferenceGapLength_, _boundaryPrecision_, and _minimumRefinedLength_, respectively.  See the [CNVDiscoveryPipeline Documentation](http://software.broadinstitute.org/software/genomestrip/org_broadinstitute_sv_qscript_CNVDiscoveryPipeline.html) for more information on the meaning of these parameters.
+
+If you have samples of varying coverage, consider trying a range of different values while subsetting your data to include only samples with sufficient coverage for the current values (see this [post](https://gatkforums.broadinstitute.org/gatk/discussion/12267/window-size-for-samples-of-varying-coverage#latest) for a discussion on this issue). If you simply want to run default settings (for samples at approx. 25x coverage), add these values at the end of the -F command:
+
+    1000 500 1000 100 500
+
+For example:
+
+    qsub ~/JobScripts/GSTRiP_CNVDiscoveryPipeline.sh -l mem=32gb,walltime=96:00:00 -F "W22 /panfs/roc/scratch/pmonnaha/Maize/gstrip/w22_defaults 30 /home/hirschc1/pmonnaha/misc-files/gstrip/W22_E2_Bams.list 1000 500 1000 100 500" -A hirschc1 -q mesabi
+
+For my initial attempts, I ran default settings with all samples included as well as a low-sensitivity run (again with all samples) and a high-sensitivity run, including only samples with approx. >40x coverage. Low-sensitivity parameters (calibrated for 10x coverage) are:
+
+    2000 1000 1500 150 1000
+
+High-sensitivity parameters for >40x coverage are:
+
+    500 250 500 75 250
+High-coverage samples used in these runs can be found in _./accessory/High_cov_samples.txt_
+
+#### Filtering redundant calls
+
+Genome STRiP includes a utility (RedundancyAnnotator) that can filter the output of CNVDiscoveryPipeline for redundant calls based on overlapping start and end coordinates.  See the [Redundancy Annotator Documentation](http://software.broadinstitute.org/software/genomestrip/org_broadinstitute_sv_annotation_RedundancyAnnotator.html) for more detail.
+
+For a pair of Genome STRiP VCFs, run the RedundancyAnnotator with the job script _./scripts/jobs/GSTRiP_RedundancyAnnotator.sh_
+
+Usage: 
+
+    qsub GSTRiP_RedundancyAnnotator.sh -F \"VCFile refName outPath memGb duplicateOverlapThreshold VCF2File\"
+_VCFile_: vcf that you would like ot genotype the samples in bamListFile
+_refName_: e.g. W22, B73, PH207, or PHB47.  Paths are hardcoded.  Change if necessary.
+_outPath_: Full path to output file
+_memGb_: number of Gb of RAM to request.  This should be about 2Gb less than requested from the HPC (e.g. qsub ... -l mem=...)
+_VCF2File_: VCF to compare with original
+
+To iteratively run this shell script on a collection of VCFs (e.g. resulting from different sensitivity settings), use the wrapper script _./scripts/code/GSTRiP_RedundancyAnnotator_wrapper.py_.  This will compare each VCF with itself and all others (parallelized by chromosome), extract the preferred variant according to GSTRiP, and concatenate the results into a single VCF.
+
+Usage: 
+
+    GSTRiP_RedundancyAnnotator_wrapper.py -f vcf_file_list \
+        -p path_to_sh \
+        -m memGB \
+        -r refName \
+        -d duplicateOverlapThreshold \
+        -o output_VCF_name \
+        -v vcftools_perl_folder \
+-f : full path to each VCF to compare.  One path per line.
+-p : Path to GSTRiP_RedundancyAnnotator.sh
+-m : Amount of memory to request from HPC
+-r : W22, B73, PH207, or PHB47.  Paths are hardcoded.  Change if necessary.
+-d : Minimum overlap required to determine two events are redundant
+-o : output file name
+-v : path to directory containing the vcftools perl modules
+
+*NOTE*: If you are running this wrapper for PH207 as reference, you need to add the flag _--chromosome10_ in order to accommodate chromosome naming convention for this reference.
+
+## SV Consolidation
 
 
 ### Notes

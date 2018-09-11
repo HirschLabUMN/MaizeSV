@@ -212,7 +212,7 @@ if __name__ == "__main__":
     import time
     start_time = time.time()
     parser = argparse.ArgumentParser(description = "")
-    parser.add_argument('-s', type=str, metavar='bed_file_of_genes_to_convert', required=True, help='comma separated file where first entry is the parent/merged gene and all subsequent entries are corresponding genes from split model in alternative reference')
+    parser.add_argument('-s', type=str, metavar='bed_file_of_genes_to_convert', required=True, help='')
     parser.add_argument('-b', type=str, metavar='blastdb', required=True, help='Full path to blast databases')
     parser.add_argument('-r', type=str, metavar='source_ref', required=False, default = "/Users/pmonnahan/Documents/Research/MaizeSV/references/B73_genesOnly.bed", help='Full path to GSTRiP_RedundancyAnnotator.sh')
     parser.add_argument('-t', type=str, metavar="tmp_dir", default=os.getcwd())
