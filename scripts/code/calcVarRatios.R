@@ -70,6 +70,40 @@ runNB <- function(i){
   return(results)
 }
 
+runLMM <- function(i){
+  Prog = as.character(unique(pp$prog)[i])
+  dat = pp %>% filter(as.character(prog)==Prog & as.character(parent) != as.character(gene)) %>% as.data.frame()
+  results = tryCatch({
+    getStatsLMM(dat)
+  }, warning = function(w) {
+    print(w)
+    rr = getStatsLMM(dat)
+    rr['status'] = "warning"
+    return(rr)
+  }, error = function(e) {
+    errD = cbind(error.df)
+    errD$parent = dat$parent[1]
+    errD$prog = dat$prog[1]
+    errD$source = dat$source[1]
+    return(errD)}) 
+  return(results)
+}
+
+getStatsLMM <- function(df, Theta){
+  full = lmer(log(value+1) ~ (1|tissue) + (1|sample) + (1 | gene), data=df)
+  reduced = lmer(log(value+1) ~ (1|tissue) + (1|sample), data=df)
+  cc = as.data.frame(VarCorr(full))
+  ratio = cc[cc$grp=="gene",4] / sum(cc[,4])
+  dd = as.data.frame(anova(full, reduced))[,-7]
+  colnames(dd)[7] = "pval"
+  dd['varRatio'] = ratio
+  dd['prog'] = df$prog[1]
+  dd['parent'] = df$parent[1]
+  dd['status'] = "Good"
+  dd['source'] = df$source[1]
+  return(dd)
+}
+
 runOne = function(i){
   Prog = as.character(unique(pp$prog)[i])
   df = pp %>% filter(as.character(prog)==Prog & as.character(parent) == as.character(gene)) %>% as.data.frame()
@@ -101,6 +135,35 @@ munge2 = function(fpkm){
   d.n = d.n %>% filter(nlevels(droplevels(gene)) > 1 & source != "unchanged") %>% as.data.frame()
   return(d.n)
 }
+counts_to_tpm <- function(counts, featureLength, meanFragmentLength) {
+  
+  # Ensure valid arguments.
+  stopifnot(length(featureLength) == nrow(counts))
+  stopifnot(length(meanFragmentLength) == ncol(counts))
+  
+  # Compute effective lengths of features in each library.
+  effLen <- do.call(cbind, lapply(1:ncol(counts), function(i) {
+    featureLength - meanFragmentLength[i] + 1
+  }))
+  
+  # Exclude genes with length less than the mean fragment length.
+  idx <- apply(effLen, 1, function(x) min(x) > 1)
+  counts <- counts[idx,]
+  effLen <- effLen[idx,]
+  featureLength <- featureLength[idx]
+  
+  # Process one column at a time.
+  tpm <- do.call(cbind, lapply(1:ncol(counts), function(i) {
+    rate = log(counts[,i]) - log(effLen[,i])
+    denom = log(sum(exp(rate)))
+    exp(rate - denom + log(1e6))
+  }))
+  
+  # Copy the row and column names from the original matrix.
+  colnames(tpm) <- colnames(counts)
+  rownames(tpm) <- rownames(counts)
+  return(tpm)
+}
 
 print("Munging...")
 p = munge(counts, splits, fsplits)
@@ -121,42 +184,47 @@ nsg = nsg %>% filter(!is.na(gene) & !duplicated(gene)) %>% as.data.frame()
 print("Casting count data...done")
 
 nsg = merge(nsg, gene_lengths, by="gene")
+row.names(nsg) = nsg$gene
+print(head(nsg))
+# dds = DESeqDataSetFromMatrix(countData = nsg[,3:62], colData = coldata, design = ~ geno + tissue + rep)
+# rownames(dds) = nsg$gene
+# 
+# mcols(dds) <- cbind(mcols(dds), nsg[63])
+# dds = DESeq(dds)
 
-dds = DESeqDataSetFromMatrix(countData = nsg[,3:62], colData = coldata, design = ~ geno + tissue + rep)
-rownames(dds) = nsg$gene
+tpm = as.data.frame(counts_to_tpm(nsg[,3:62],nsg$basepairs, c(rep(50,60))))
 
-mcols(dds) <- cbind(mcols(dds), nsg[63])
-dds = DESeq(dds)
-
-print("Extracting DESeq2 data...")
-disp = data.frame(gene = nsg$gene, disp = dispersions(dds))
+# print("Extracting DESeq2 data...")
+# disp = data.frame(gene = nsg$gene, disp = dispersions(dds))
 qq = p %>% group_by(gene, parent, prog) %>% summarize(pos.gene = min(pos.exon), end.gene = max(end.exon), famnum=min(famnum), source = min(source)) %>% as.data.frame()
-ww = as.data.frame(fpkm(dds, robust=T))
-ww = rownames_to_column(ww, var = "gene")
-ww = merge(ww, qq, by="gene", all.x=T)
-print("Extracting DESeq2 data...done")
-
+# ww = as.data.frame(fpkm(dds, robust=T))
+tpm = rownames_to_column(tpm, var = "gene")
+# ww = cbind(nsg[,1:2], tpm)
+print(head(tpm))
+ww = merge(tpm, qq, by=c("gene"), all.x=T)
+# print("Extracting DESeq2 data...done")
+print(head(ww))
 print("Re-munging...")
-ee = munge2(ww)
+pp = munge2(ww)
 print("Re-munging...done")
-
-print("Merging dispersion estimates...")
-pp = merge(ee, disp, by=c("gene"), all.x = TRUE)
-print("Merging dispersion estimates...done")
+print(head(pp))
+# print("Merging dispersion estimates...")
+# pp = merge(ee, disp, by=c("gene"), all.x = TRUE)
+# print("Merging dispersion estimates...done")
 
 print("Filtering for valid progeny sets...")
-pp = pp %>% filter(disp != 60) %>% as.data.frame() ## FILTER FOR GENES WITH DISPERSION ==60; MEANS VERY LOW COUNTS
-pp = pp %>% group_by(parent, prog) %>% filter(nlevels(droplevels(gene)) > 2) %>% ungroup() %>% as.data.frame()
-print("Filtering for valid progeny sets...done")
+# pp = pp %>% filter(disp != 60) %>% as.data.frame() ## FILTER FOR GENES WITH DISPERSION ==60; MEANS VERY LOW COUNTS
+# pp = pp %>% group_by(parent, prog) %>% filter(nlevels(droplevels(gene)) > 2) %>% ungroup() %>% as.data.frame()
+# print("Filtering for valid progeny sets...done")
 
-print("Writing DEseq2 results...")
+print("Writing input data...")
 write.table(pp, outfile2, row.names = F, quote=F)
-print("Writing DEseq2 results...done")
+print("Writing input data...done")
 
-rm(ee)
+# rm(ee)
 rm(nsg)
 rm(ww)
-rm(dds)
+# rm(dds)
 rm(qq)
 rm(p)
 
@@ -169,8 +237,9 @@ results = data.frame("Df" = as.numeric(), "AIC" = as.numeric(), "BIC" = as.numer
 for (i in 1:(length(unique(pp$prog))/10)){
   # for (i in 1:10){
   j = i * 10
-  print(paste0("Running jobs: ", j - 9, "-", j))
-  ff = mclapply((j - 9):j, FUN = runNB, mc.cores=2)
+  progress = round(i/(length(unique(pp$prog))/10), digits = 4) * 100
+  print(paste0("Running jobs: ", j - 9, "-", j, "; (", progress, "% complete)"))
+  ff = mclapply((j - 9):j, FUN = runLMM, mc.cores=2)
   wait()
   ff = as.data.frame(do.call(rbind,ff))
   results = rbind(results, ff)

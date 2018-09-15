@@ -244,3 +244,14 @@ gs.w22=read.table("~/Documents/Research/MaizeSV/data/w22_SVinfo.txt")
 ggplot(gs.w22,aes(x=V4,fill=V5,y=V1))+geom_density_ridges(alpha=.5)+scale_x_log10()
 ```
 
+Effect of RedundancyAnnotator in culling redundant calls within a GSTRiP run
+```{r}
+gstrip2 = read.table("~/Documents/Research/MaizeSV/data/gstrip_RF_sizes.txt")
+gstrip2['RF'] = 'after' 
+gstrip1['RF'] = 'before'
+gstrip = rbind(gstrip1,gstrip2)
+aa = gstrip %>% group_by(V1,V2,RF) %>% summarize(n = n()) %>% as.data.frame()
+aa = dcast(aa, V1 + V2 ~ RF, value.var="n")
+aa  = aa[,c(1,2,4,3)]
+```
+

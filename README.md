@@ -21,6 +21,7 @@ You will also need the following python modules, which can be installed with pip
 
     pip install biopython
     pip install --user --upgrade cutadapt
+    pip install scikit-allel
     conda install -c bioconda svtools
   
 ### _Speedseq_ <https://github.com/hall-lab/speedseq>

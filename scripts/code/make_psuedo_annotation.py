@@ -52,7 +52,7 @@ def makeSplitGeneKeyDict(gene_key_file):
     with open(gene_key_file, 'r') as split_gene_key:
         parent_list = []
         SGK = {} # This will be used if creating new gene names via --newNames
-        SGK2 = {} # Temporary dictionary for creating bedfiles with traditional names
+        SGK2 = {} # SGK2 is a dictionary with gene name as key and one or more items of [parent, child1, child2].  Gene key can be either parent or child.
         for i, line1 in enumerate(csv.reader(split_gene_key, delimiter = ",")):
             parent = line1[0]
             children = sorted(list(filter(None, line1[1:]))) # Remove empty entries in the child entries and sort entries (helps for identifying duplicate entries)
@@ -79,7 +79,7 @@ def makeSplitGeneKeyDict(gene_key_file):
                 SGK[parent] = [children]
             parent_list.append(parent)
     SGK3 = {}
-    for key in SGK2:
+    for key in SGK2: # Removes duplicate entries from traditional name key dictionary
         for i, val in enumerate(SGK2[key]):
             if i == 0:
                 SGK3[key] = [val]
@@ -92,23 +92,22 @@ def newGenes(parent, prog_set, coord_dict, to_coord):
     pid = parent[7:]
     childDict = {}
     metaInfo = [MetaKey[pref].upper() + "1"]
-    for ref2name_list in prog_set:
+    for ref2name_list in prog_set: # Loop over sets of progeny for parent to correct metadata info
         cref = ref2name_list[0][6]
         cnum = len(ref2name_list)
         metaInfo.append(MetaKey[cref] + str(cnum)) 
-    if len(metaInfo) != 3:
+    if len(metaInfo) != 3: # This will be tripped if the progeny sets are all from same alternative reference
         oref = [k for k in ["b","p","w"] if k not in [MetaKey[pref], MetaKey[cref]]]
-        metaInfo.append(oref[0] + "0")
+        metaInfo.append(oref[0] + "0") # Metadata should show progeny count of zero for this other reference
     metaInfo = "".join(sorted(metaInfo, key=str.lower))
-    forParCoords = [] 
+    forParCoords = [] # If parent gene comes from alternative reference, converted coordinates will be based on first and last exon of child genes from current reference
     for ref2name_list in prog_set: # Get progeny names that match to_coords to pass as key to coord_dict to get parCoords
         for child in ref2name_list:
-
             cref = ref2name_list[0][6]
             newID = metaInfo + pid + child[7:] + 'c' + to_coord
             try:
                 childDict[newID] = coord_dict[cref][lowID(child,7)]
-                if cref == to_coord:
+                if cref == to_coord: # Only use 
                     forParCoords.append(child)
             except KeyError: 
                 childDict[newID] = [cref, -9 , -9]

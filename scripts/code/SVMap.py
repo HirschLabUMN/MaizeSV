@@ -8,18 +8,18 @@ import line_profiler
 
 # @profile
 def findOverlap(ref, NPZ):
-    vcf = np.load(NPZ[ref][0])
-    homs = pickle.load(open(NPZ[ref][1], 'rb'))
-    for idx in range(0, np.shape(vcf['variants/ID'])[0]):
+    vcf = np.load(NPZ[ref][0]) # Load variants from current reference
+    homs = pickle.load(open(NPZ[ref][1], 'rb')) # Load dictionaries containing homologs for current reference
+    for idx in range(0, np.shape(vcf['variants/ID'])[0]): # Loop over variants
         gene_ids = vcf['variants/overlapped_Annotations'][idx]
         gene_ids = list(filter(None, gene_ids))
-        for gene in gene_ids:
+        for gene in gene_ids: # Loop over all genes that overlap with this variant
             # pdb.set_trace()
             try:
-                for alt_ref, alt_genes in homs[gene].items():
-                    alt_vcf = np.load(NPZ[alt_ref][0])
+                for alt_ref, alt_genes in homs[gene].items(): # This will throw KeyError if there are no homologs for this gene
+                    alt_vcf = np.load(NPZ[alt_ref][0]) 
                     alt_Genes = list(alt_vcf['variants/overlapped_Annotations'])
-                    for j, alt_gene in enumerate(alt_genes):
+                    for j, alt_gene in enumerate(alt_genes): 
                         # pdb.set_trace()
                         for i in range(0, np.shape(alt_vcf['variants/ID'])[0]):
                             if alt_gene[0] in list(filter(None, alt_Genes[i])):

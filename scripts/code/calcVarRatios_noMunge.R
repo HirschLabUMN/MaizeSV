@@ -31,6 +31,21 @@ getStats <- function(df, Theta){
   return(dd)
 }
 
+getStatsLMM <- function(df, Theta){
+  full = lmer(log(value+1) ~ (1|tissue) + (1|sample) + (1 | gene), data=df)
+  reduced = lmer(log(value+1) ~ (1|tissue) + (1|sample), data=df)
+  cc = as.data.frame(VarCorr(full))
+  ratio = cc[cc$grp=="gene",4] / sum(cc[,4])
+  dd = as.data.frame(anova(full, reduced))[,-7]
+  colnames(dd)[7] = "pval"
+  dd['varRatio'] = ratio
+  dd['prog'] = df$prog[1]
+  dd['parent'] = df$parent[1]
+  dd['status'] = "Good"
+  dd['source'] = df$source[1]
+  return(dd)
+}
+
 runNB <- function(i){
   Prog = as.character(unique(pp$prog)[i])
   print(Prog)
@@ -51,6 +66,55 @@ runNB <- function(i){
     errD$source = dat$source[1]
     return(errD)}) 
   return(results)
+}
+
+runLMM <- function(i){
+  Prog = as.character(unique(pp$prog)[i])
+  dat = pp %>% filter(as.character(prog)==Prog & as.character(parent) != as.character(gene)) %>% as.data.frame()
+  results = tryCatch({
+    getStatsLMM(dat)
+  }, warning = function(w) {
+    print(w)
+    rr = getStatsLMM(dat)
+    rr['status'] = "warning"
+    return(rr)
+  }, error = function(e) {
+    errD = cbind(error.df)
+    errD$parent = dat$parent[1]
+    errD$prog = dat$prog[1]
+    errD$source = dat$source[1]
+    return(errD)}) 
+  return(results)
+}
+
+counts_to_tpm <- function(counts, featureLength, meanFragmentLength) {
+  
+  # Ensure valid arguments.
+  stopifnot(length(featureLength) == nrow(counts))
+  stopifnot(length(meanFragmentLength) == ncol(counts))
+  
+  # Compute effective lengths of features in each library.
+  effLen <- do.call(cbind, lapply(1:ncol(counts), function(i) {
+    featureLength - meanFragmentLength[i] + 1
+  }))
+  
+  # Exclude genes with length less than the mean fragment length.
+  idx <- apply(effLen, 1, function(x) min(x) > 1)
+  counts <- counts[idx,]
+  effLen <- effLen[idx,]
+  featureLength <- featureLength[idx]
+  
+  # Process one column at a time.
+  tpm <- do.call(cbind, lapply(1:ncol(counts), function(i) {
+    rate = log(counts[,i]) - log(effLen[,i])
+    denom = log(sum(exp(rate)))
+    exp(rate - denom + log(1e6))
+  }))
+  
+  # Copy the row and column names from the original matrix.
+  colnames(tpm) <- colnames(counts)
+  rownames(tpm) <- rownames(counts)
+  return(tpm)
 }
 
 includes <- '#include <sys/wait.h>'
@@ -75,10 +139,10 @@ runOne = function(i){
 for (i in 1:(length(unique(pp$prog))/10)){
 # for (i in 1:10){
   j = i * 10
-  progress = round(i/(length(unique(pp$prog))/10), digits = 4)
+  progress = round(i/(length(unique(pp$prog))/10), digits = 4) * 100
   print(paste0("Running jobs: ", j - 9, "-", j, "; (", progress, "% complete)"))
   runNB(j)
-  ff = mclapply((j - 9):j, FUN = runNB, mc.cores=2)
+  ff = mclapply((j - 9):j, FUN = runLMM, mc.cores=2)
   wait()
   ff = as.data.frame(do.call(rbind,ff))
   results = rbind(results, ff)
