@@ -12,7 +12,6 @@ require(dplyr)
 require(tidyr)
 require(parallel)
 require(stringr)
-require(DESeq2)
 require(lme4)
 require(inline)
 require(tibble)
@@ -22,6 +21,8 @@ outfile2 = args[5]
 counts = read.table(args[1], head=T)
 splits = read.table(args[2])
 fsplits = read.table(args[3])
+minTpm = args[6] #Threshold for low TPM
+propFilt = args[7] #filter exons based on TPM for genes with less than this proportion of exons with low TPM
 
 oldNames = c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10") 
 newNames = c("exon","chrom","pos.exon","end.exon","gene","pos.gene","end.gene","parent","prog","famnum")
@@ -57,7 +58,7 @@ runNB <- function(i){
   results = tryCatch({
     getStats(dat, Theta)
   }, warning = function(w) {
-    print(w)
+
     rr = getStats(dat, Theta)
     rr['status'] = "warning"
     return(rr)
@@ -135,6 +136,18 @@ munge2 = function(fpkm){
   d.n = d.n %>% filter(nlevels(droplevels(gene)) > 1 & source != "unchanged") %>% as.data.frame()
   return(d.n)
 }
+
+munge3 = function(tpm_exons){
+  d.m = melt(tpm_exons, id.vars = c("exon","gene","parent","prog", "famnum", "source","pos.exon","end.exon","rowid","basepairs","pos.gene","end.gene"))
+  d.n = d.m %>% mutate(ref = str_split_fixed(as.character(variable), "_", 3)[,3], sample = str_split_fixed(as.character(variable), "[.]", 3)[,1], tissue = str_split_fixed(as.character(variable), "[.]", 3)[,2], rep = str_split_fixed(as.character(variable), "[.]", 3)[,3]) %>% mutate(rep = str_split_fixed(as.character(rep),"_",3)[,1]) %>% as.data.frame()
+  d.n$tissue = as.factor(d.n$tissue)
+  d.n$sample = as.factor(d.n$sample)
+  d.n$rep = as.factor(d.n$rep)
+  d.n$gene = as.factor(d.n$gene)
+  d.n = d.n %>% filter(nlevels(droplevels(gene)) > 1 & source != "unchanged") %>% as.data.frame()
+  return(d.n)
+}
+
 counts_to_tpm <- function(counts, featureLength, meanFragmentLength) {
   
   # Ensure valid arguments.
@@ -171,6 +184,8 @@ print("Munging...done")
 
 p['basepairs'] = abs(p$end.exon - p$pos.exon)
 gene_lengths = p %>% filter(sample=="B" & tissue=="A" & rep=="R1") %>% group_by(gene) %>% summarize(basepairs = sum(basepairs)) %>% as.data.frame()
+#p['stdval'] = p$value / p$basepairs
+#p = p %>% group_by(prog, gene) %>% filter(stdval != max(stdval) | stdval != min(stdval)) %>% as.data.frame()
 
 nn = colnames(counts)[2:61]
 mm = c(rep("B",20), rep("P",20), rep("W",20))
@@ -178,36 +193,65 @@ tt = c(rep(c("A","A","Em","Em","En","En","IE","IE","I","I","L10","L10","L","L","
 rr = c(rep(c("R1","R2"),30))
 coldata = data.frame(row.names = nn, geno = mm, tissue = tt, rep = rr)
 
-print("Casting count data...")
-nsg = dcast(p, gene + prog ~ variable, value.var = "value", fun.aggregate = sum)
-nsg = nsg %>% filter(!is.na(gene) & !duplicated(gene)) %>% as.data.frame()
-print("Casting count data...done")
-
-nsg = merge(nsg, gene_lengths, by="gene")
-row.names(nsg) = nsg$gene
-print(head(nsg))
+# print("Casting count data...")
+# nsg = dcast(p, gene + parent + prog ~ variable, value.var = "value", fun.aggregate = sum)
+# nsg = nsg %>% filter(!is.na(gene) & !duplicated(gene)) %>% as.data.frame()
+# print("Casting count data...done")
+# 
+# nsg = merge(nsg, gene_lengths, by="gene")
+# row.names(nsg) = nsg$gene
+# print(head(nsg))
 # dds = DESeqDataSetFromMatrix(countData = nsg[,3:62], colData = coldata, design = ~ geno + tissue + rep)
 # rownames(dds) = nsg$gene
-# 
+#
 # mcols(dds) <- cbind(mcols(dds), nsg[63])
 # dds = DESeq(dds)
 
-tpm = as.data.frame(counts_to_tpm(nsg[,3:62],nsg$basepairs, c(rep(50,60))))
+# tpm = as.data.frame(counts_to_tpm(nsg[,4:63],nsg$basepairs, c(rep(50,60))))
 
-# print("Extracting DESeq2 data...")
-# disp = data.frame(gene = nsg$gene, disp = dispersions(dds))
-qq = p %>% group_by(gene, parent, prog) %>% summarize(pos.gene = min(pos.exon), end.gene = max(end.exon), famnum=min(famnum), source = min(source)) %>% as.data.frame()
-# ww = as.data.frame(fpkm(dds, robust=T))
-tpm = rownames_to_column(tpm, var = "gene")
-# ww = cbind(nsg[,1:2], tpm)
-print(head(tpm))
-ww = merge(tpm, qq, by=c("gene"), all.x=T)
+nse = dcast(p, exon + gene + parent + prog + basepairs + pos.gene + end.gene + pos.exon + end.exon + famnum + source ~ variable, value.var = "value")
+nse = nse[nse$basepairs>50,]
+nse=nse[!is.na(nse$basepairs),]
+nse['rowid'] = paste(nse$exon, nse$prog, nse$gene, nse$parent)
+row.names(nse) = nse$rowid
+tpm_e = as.data.frame(counts_to_tpm(nse[,12:71], nse$basepairs, c(rep(50,60))))
+print(nse)
+# qq = p %>% group_by(gene, parent, prog) %>% summarize(pos.gene = min(pos.exon), end.gene = max(end.exon), famnum=min(famnum), source = min(source)) %>% as.data.frame()
+
+# tpm = rownames_to_column(tpm, var = "gene")
+tpm_e = rownames_to_column(tpm_e, var = "rowid")
+
+print(head(tpm_e))
+# ww = merge(tpm, qq, by=c("gene"), all.x=T)
+ww = merge(tpm_e, nse[,c("exon","gene","parent","prog","basepairs","pos.gene","end.gene","pos.exon","end.exon","famnum","source","rowid")], by="rowid", all.x=T)
 # print("Extracting DESeq2 data...done")
 print(head(ww))
 print("Re-munging...")
-pp = munge2(ww)
+# pp = munge2(ww)
+pp = munge3(ww)
 print("Re-munging...done")
 print(head(pp))
+
+# Filters?
+#   exons minimum tpm 
+#   expressed in minimum number of tissues
+#   
+#   plot varRatio versus mean tpm
+#   filter genes with huge CV??
+#   
+#   
+pp = pp %>% group_by(exon) %>% mutate(lowtpm = ifelse(mean(value) < minTpm, 1, 0)) %>% group_by(gene) %>% mutate(propLow=sum(lowtpm)/n()) %>% as.data.frame()
+
+pp = pp %>% group_by(exon) %>% filter(!(propLow <= propFilt & lowtpm == 1)) %>% as.data.frame()
+
+#Only filter low TPM exons if it doesn't wipe the gene out??  Or if propLow is a certain treshhold?  Or only filter low TPM exons if avg TPM is certain distance from avg exon-TPM for the gene.
+
+# pp = pp %>% group_by(parent) %>% filter(end.exon==max(end.exon) | pos.exon==min(pos.exon)) %>% as.data.frame()
+
+rj= pp %>% group_by(exon) %>% filter((propLow <= propFilt & lowtpm == 1)) %>% as.data.frame()
+
+RJ = pp %>% filter(as.character(prog) %in% rj$prog) %>% as.data.frame()
+# throw out first and last exon??
 # print("Merging dispersion estimates...")
 # pp = merge(ee, disp, by=c("gene"), all.x = TRUE)
 # print("Merging dispersion estimates...done")
@@ -222,10 +266,10 @@ write.table(pp, outfile2, row.names = F, quote=F)
 print("Writing input data...done")
 
 # rm(ee)
-rm(nsg)
+rm(nse)
 rm(ww)
 # rm(dds)
-rm(qq)
+# rm(qq)
 rm(p)
 
 includes <- '#include <sys/wait.h>'

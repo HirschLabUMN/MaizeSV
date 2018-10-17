@@ -190,11 +190,12 @@ For installing _speedseq sv_, first do:
 Generate _speedseq_ commands with _./scripts/code/_**Generate_SpeedSeq_commands.py**
 
     python Generate_SpeedSeq_commands.py -f fastq_directory \
-    -s Sample_fastq_key  \
+    -k Sample_fastq_key  \
     -o output_directory \
     -r reference_path_file \
     -c number_of_cores \
-    -m number_of_Gb_memory > speedseq_command_file
+    -m number_of_Gb_memory \
+    -s path_to_speedseq_directory > speedseq_command_file
 
   
 Given the large number of nodes needed to complete all mapping commands, it is most efficient to use either the ‘large’ or ‘widest’ queues on mesabi.  To use the ‘widest’ queue, you must request special permission by emailing help@msi.umn.edu.  
