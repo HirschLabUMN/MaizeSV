@@ -14,10 +14,10 @@ import argparse
 
 # Specify arguments to be read from the command line
 parser = argparse.ArgumentParser(description='This script generates commands for discovering structural variants with speedseq sv.  Speedseq sv implements lumpy (for discovery) along with svtyper and CNVnator (for genotyping)')
-parser.add_argument('-b', type=str, metavar='bam_directory', required=True, help='Full path to directory with input merged bam files')
-parser.add_argument('-r', type=str, metavar='Reference_Path_Key', required=True, help='Space-delimited file to key that links reference fasta path AND reference non-genic bed file path to reference names. Format: Reference_name Reference.fasta Reference_NonGenic.bed')
-parser.add_argument('-o', type=str, metavar='output_directory', required=True, help='Full path to output directory in which the per-individual vcf files will be written')
-parser.add_argument('-c', type=str, metavar='Number_of_cores', required=True, help="Number_of_cores")
+parser.add_argument('-b', type=str, metavar='bam_directory', default="/panfs/roc/scratch/pmonnaha/Maize/widiv_bams/merged/", help='Full path to directory with input merged bam files')
+parser.add_argument('-r', type=str, metavar='Reference_Path_Key', default="/home/hirschc1/pmonnaha/JobScripts/accessory/reference_paths.txt", help='Space-delimited file to key that links reference fasta path AND reference non-genic bed file path to reference names. Format: Reference_name Reference.fasta Reference_NonGenic.bed')
+parser.add_argument('-o', type=str, metavar='output_directory', default="/panfs/roc/scratch/pmonnaha/Maize/Lumpy/", help='Full path to output directory in which the per-individual vcf files will be written')
+parser.add_argument('-c', type=str, metavar='Number_of_cores', default="8", help="Number_of_cores")
 parser.add_argument('-s', type=str, metavar='path_to_speedseq_directory', default="/home/hirschc1/pmonnaha/software/speedseq/")
 parser.add_argument('-w', type=str, metavar='window_size', default="300")
 args = parser.parse_args()

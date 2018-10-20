@@ -17,12 +17,12 @@ import time
 
 # Specify arguments to be read from the command line
 parser = argparse.ArgumentParser(description='This script generates commands for merging files with sambamba.  These commands can be executed in parallel using GNU parallel or a task array.  Be sure to use the same Sample_Fastq_Key (-s) and output_directory (-o) as was used with Generate_SpeedSeq_commands.py')
-parser.add_argument('-b', type=str, metavar='bam_directory', required=True, help='Full path to directory with input unmerged bam files')
-parser.add_argument('-k', type=str, metavar='Sample_Fastq_Key', help='REQUIRED: Space-delimited file to key that links fastq files to sample names.  fastq file names can be partial, but must be complete enough to uniquely identify the fastq file.One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
-parser.add_argument('-o', type=str, metavar='output_bam_directory', help='REQUIRED: Full path to output directory in which the MERGED bam files will be written')
+parser.add_argument('-b', type=str, metavar='bam_directory', default="/panfs/roc/scratch/pmonnaha/Maize/widiv_bams/unmerged/", help='Full path to directory with input unmerged bam files')
+parser.add_argument('-k', type=str, metavar='Sample_Fastq_Key', default="/home/hirschc1/pmonnaha/JobScripts/accessory/sample_fastq_key.txt", help='Space-delimited file to key that links fastq files to sample names.  fastq file names can be partial, but must be complete enough to uniquely identify the fastq file.One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
+parser.add_argument('-o', type=str, metavar='output_bam_directory', default="/panfs/roc/scratch/pmonnaha/Maize/widiv_bams/merged/", help='Full path to output directory in which the MERGED bam files will be written')
 parser.add_argument('-c', type=str, metavar='Number_of_cores', default="1")
 parser.add_argument('-s', type=str, metavar='path_to_speedseq_directory', default="/home/hirschc1/pmonnaha/software/speedseq/")
-parser.add_argument('-r', type=str, metavar='Reference_Path_Key', help='REQUIRED: Space-delimited file to key that links reference fasta path to reference names to be used in BAM naming. Format: Reference_name Reference_path')
+parser.add_argument('-r', type=str, metavar='Reference_Path_Key', default="/home/hirschc1/pmonnaha/JobScripts/accessory/reference_paths.txt", help='Space-delimited file to key that links reference fasta path to reference names to be used in BAM naming. Format: Reference_name Reference_path')
 parser.add_argument('-d', type=str, metavar='delete_input', default='false', help='Do you want to delete the input files upon successful completion of the merging?')
 args = parser.parse_args()
 
