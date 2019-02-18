@@ -17,13 +17,18 @@ require(reshape2)
 #Number of singletons per sample
 lumps = read.table("~/Documents/Research/MaizeSV/data/Lumpy_singletons_pre-classify.txt", head = T)
 
-lsizes = read.table("~/Documents/Research/MaizeSV/data/Lumpy_sizeNsamps_E2_p00_w300_d500.txt", head=T)
+#OLD
+#lsizes = read.table("~/Documents/Research/MaizeSV/data/Lumpy_sizeNsamps_E2_p00_w300_d500.txt", head=T)
+#lsizes = read.table("~/Documents/Research/MaizeSV/data/Lumpy_sizeNsamps_E2_p00_w300.txt", head=T)
 
 lsum = lsizes %>% group_by(ref,stage,type) %>% summarize(n = n(), median = median(size)) %>% as.data.frame()
 
-#Genome STRiP summary files
-gsizes=read.table("~/Documents/Research/MaizeSV/data/gstrip_cnv_sizes.txt")
-gstrip=read.table("~/Documents/Research/MaizeSV/data/gstrip_varPerSamp_defaults.txt", head=T)
+#Genome STRiP summary files -- OLD MQ10
+#gsizes=read.table("~/Documents/Research/MaizeSV/data/gstrip_cnv_sizes.txt")
+#gstrip=read.table("~/Documents/Research/MaizeSV/data/gstrip_varPerSamp_defaults.txt", head=T)
+
+gsizes = read.table("~/Documents/Research/MaizeSV/data/gstrip_MQ20_INFOfields.txt", head=T)
+
 
 #Gene lengths from B73 gff
 b73_geneLengths=read.table("~/Documents/Research/MaizeSV/data/B73_gene_lengths.txt")
@@ -46,7 +51,7 @@ ci=ci[ci$V1==c("pre","00","05","10","30"),]
 ci$V1=factor(ci$V1,levels=c("30","10","05","00","pre"))
 
 #Number of variants per sample for Lumpy
-vps=read.table("~/Documents/Research/MaizeSV/data/variant_counts_per_sample.txt")
+vps=read.table("~/Documents/Research/MaizeSV/data/variant_counts_per_sample_Lumpy_Raw.txt")
 vps['Sample']=vps$V1
 vps['Ref']=vps$V2
 vps=vps[,c("Sample","V3","Ref")]
@@ -253,5 +258,31 @@ gstrip = rbind(gstrip1,gstrip2)
 aa = gstrip %>% group_by(V1,V2,RF) %>% summarize(n = n()) %>% as.data.frame()
 aa = dcast(aa, V1 + V2 ~ RF, value.var="n")
 aa  = aa[,c(1,2,4,3)]
+```
+
+Post re-running all analyses with MQ20
+```{r}
+
+
+roundUp <- function(x,to=10){
+  to*(x%/%to + as.logical(x%%to))
+}
+
+gsizes['frame'] = roundUp(gs$POS, to = 10000) / 10000
+
+lines = gsizes %>% filter(CHROM=="1" & REF=="B73.GS.RA.d25.vcf") %>% select(id, POS, END, GSCNCATEGORY, frame) %>% melt(., id.var=c('id', 'GSCNCATEGORY','frame'), value.var=c("POS","END"))
+
+p = ggplot(lines, aes(x = value, y = jitter(1), group = id, color = GSCNCATEGORY)) + geom_line(size = 8) + ylab("") + xlab("Position") + theme(axis.text.y = element_blank())
+
+
+sliderPlot = function(df, min, max){
+  df %<>% filter(value >= min & value < max) %>% mutate(nval = value - min)
+  p = ggplot(df, aes(x = nval/1000, y = jitter(1), group = id, color = GSCNCATEGORY)) + geom_line(size = 8) + ylab("") + xlab("Position") + theme(axis.text.y = element_blank())
+  pp = ggplotly(p)
+  return(pp)
+}
+
+
+
 ```
 
