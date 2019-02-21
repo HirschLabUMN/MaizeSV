@@ -21,10 +21,10 @@ first_gene = True
 old_stop = 0
 
 # Begin looping over lines in the gff file
-with open(args.gff, 'r') as gff:
+with open(args.gff, 'rU') as gff:
 	for i, line in enumerate(gff):
 		if line[0] != "#": # Ignore all lines in the header of the gff
-			if line.split()[1] != "wareLab": # This is a catch for the B73 gff because it has a wierd first line
+			if line.split()[1] != "wareLab" and line.split()[2] == "gene": # This is a catch for the B73 gff because it has a wierd first line
 				line = line.strip("\n").split()
 				chrom = line[0].replace("M","chr")
 				start = line[3] # Lower boundary of entry
@@ -35,7 +35,7 @@ with open(args.gff, 'r') as gff:
 					current_chrom = chrom 
 				
 				# this catches a gene entry on same chomosome as before
-				if line[2] == "gene" and chrom == current_chrom: 
+				if chrom == current_chrom: 
 					if int(start) - int(old_stop) >= args.b * 2 : # If buffer regions overlap, then we consider the space between genes to be GENIC.
 						if first_gene is True:
 							print(f"{chrom}\t0\t{int(start) - args.b}")
@@ -44,7 +44,7 @@ with open(args.gff, 'r') as gff:
 							print(f"{chrom}\t{int(old_stop) + args.b}\t{int(start) - args.b}")
 				
 				# This catches a gene entry after moving on to new chromosome
-				elif line[2] == "gene" and chrom != current_chrom: 
+				else: 
 					print(f"{current_chrom}\t{int(old_stop) + args.b}\t999999999") # the final non-genic region is the end of the last gene stop point all the way to the end of the chromosome (999999999)
 					if int(start) - args.b > 0: # Does buffer region of first gene on new chromosome extend off the beginning of the chromosome?
 						print(f"{chrom}\t0\t{int(start) - args.b}")
