@@ -2,7 +2,7 @@
 import argparse
 import os
 from cyvcf2 import VCF
-import random
+from numpy import random
 import pdb
 
 
@@ -50,12 +50,13 @@ def wholeVCFcommands(vcf_list, sample_list, outdir, bam_dir, samplot_directory, 
 			print(i[1], "does not exist") 
 	return()
 
-def makeDuoPics(vcf_list, sample_list, outdir, bam_dir, samplot_directory, bcftools_executable, num_duos, length_threshold = 100000):
+def makeComboPics(vcf_list, sample_list, outdir, bam_dir, samplot_directory, bcftools_executable, num_pics, num_samps, ref_id, length_threshold = 100000):
 	for i in vcf_list:
 		if os.path.exists(i[1]):
 			if i[1].endswith("vcf"):
+				suf = i[0]
 				vcf = VCF(i[1])
-				vcf_dir = i[1].split("/")[-1].replace(".vcf","_duos")
+				vcf_dir = i[1].split("/")[-1].replace(".vcf","_combos")
 				# pdb.set_trace()
 				Outdir = f"{outdir}/{vcf_dir}"
 				if not os.path.exists(Outdir): os.mkdir(Outdir)
@@ -67,17 +68,30 @@ def makeDuoPics(vcf_list, sample_list, outdir, bam_dir, samplot_directory, bcfto
 						svtype = variant.INFO.get('GSCNCATEGORY')
 						svLen = variant.INFO.get('GSELENGTH')
 						if svtype == "None": print("Change Type to String for GSCNCATEGORY in VCF header")
+						genos = variant.format('CN').tolist()
+						genos = [x[0] for x in genos]
+						if variant.format('FT') is not None:
+							filts = [j for j, x in enumerate(variant.format('FT')) if x != "PASS"]
+						else: filts = []
+						if samps.index(ref_id) in filts: continue
+						else: 
+							ref_allele = genos[samps.index(ref_id)]
+							genos = [0 if x == ref_allele else 3 for x in genos]
+							genos = [-9 if j in filts else x for j, x in enumerate(genos)]
 					else:
 						svLen = variant.INFO.get('SVLEN')
+						genos = variant.gt_types
 					if svLen < length_threshold:
-						alts = [j for j, x in enumerate(variant.gt_types) if x == 3]
-						refs = [j for j, x in enumerate(variant.gt_types) if x == 0]
-						if len(alts) > 2 and len(refs) > 2:
-							for k in range(0,num_duos):
-								alt = samps[random.choice(alts)]
-								ref = samps[random.choice(refs)]
-								png_file = f"{svtype}_{variant.CHROM}_{variant.start}_{variant.end}_{alt}_{ref}.png"
-								cmd = f"{samplot_directory}/samplot.py -n {alt},{ref} -b {bam_dir}/{alt}{i[0]},{bam_dir}/{ref}{i[0]} -o {Outdir}/{png_file} -s {variant.start} -e {variant.end} -c {variant.CHROM} -a -t {svtype}"
+						alts = [j for j, x in enumerate(genos) if x == 3]
+						refs = [j for j, x in enumerate(genos) if x == 0]
+						if len(alts) > num_samps and len(refs) > num_samps: #CHANGE NEEDED HERE TO ALLOW FOR 3 AND 3 OR X AND X ALT/REF SAMPS
+							for k in range(0, num_pics):
+								Samps = [samps[ii] for ii in random.choice(alts, num_samps, replace=False)] + [samps[ii] for ii in random.choice(refs, num_samps, replace=False)]
+								# alt = [samps[i] for i in random.choice(alts, num_samps, replace=False)]
+								# ref = [samps[i] for i in random.choice(refs, num_samps, replace=False)]
+								Bams = [f"{bam_dir}/{x}{suf}" for x in Samps]
+								png_file = f"{svtype}_{variant.CHROM}_{variant.start}_{variant.end}.png"
+								cmd = f"{samplot_directory}/samplot.py -n {','.join(Samps)} -b {','.join(Bams)} -o {Outdir}/{png_file} -s {variant.start} -e {variant.end} -c {variant.CHROM} -a -t {svtype}"
 								print(cmd)
 			elif i[1].endswith("gz"):
 				print("unzip vcf file: ", i[1])		
@@ -96,7 +110,10 @@ if __name__ == "__main__":
 	parser.add_argument('-s', type=str, metavar='bam_suffix', required=False, default="-9", help="sample name in vcf file + suffix  = bamName")
 	parser.add_argument('-f', type=str, metavar='vcf_file_list', required=False, default="-9", help="Tab-delimited file with the bam suffix to look for followed by vcf file")
 	parser.add_argument('--samps', type=str, metavar='sample_names', required=False, default="-9", help="Sample names can be provided here as a comma-separated list (no spaces).  Otherwise, samples will be retrieved from the header of the vcf")
-	parser.add_argument('-d', type=int, metavar='num_duos', required=False, default=-9, help="how many ref/alt sample pairs do you want to generate pictures for")
+	parser.add_argument('-N', type=int, metavar='num_pics', required=False, default=1, help="Number of pictures per variant")
+	parser.add_argument('-n', type=int, metavar='num_samp', required=False, default=3, help="Number of samples to show for ref and alt alleles")
+	parser.add_argument('-c', type=str, metavar='make_combos', required=False, default='true', help="Number of samples to show for ref and alt alleles")
+	parser.add_argument('-r', type=str, metavar='reference_id', required=False, default='-9', help="Reference name as it is in VCF.  Used to find reference allele for GSTRiP VCFs.")
 
 	args = parser.parse_args()
 
@@ -109,9 +126,12 @@ if __name__ == "__main__":
 	else:
 		print(args.S, "does not exist")
 
-	vcf_list = getVCFlist(args.f, args.v, args.s)
-	if args.d != -9:
-		makeDuoPics(vcf_list, args.samps, args.o, args.b, args.S, args.B, args.d)
+	if args.f != "-9":
+		vcf_list = getVCFlist(args.f, args.v, args.s)
+	else: vcf_list = [[args.s, args.v]]
+
+	if args.c == 'true':
+		makeComboPics(vcf_list, args.samps, args.o, args.b, args.S, args.B, args.N, args.n, args.r)
 
 
 

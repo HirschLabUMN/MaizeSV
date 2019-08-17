@@ -14,20 +14,9 @@ require(stringr)
 require(scales)
 require(reshape2)
 
-#Number of singletons per sample
-lumps = read.table("~/Documents/Research/MaizeSV/data/Lumpy_singletons_pre-classify.txt", head = T)
+#Lumpy info
+li = read.table("~/Documents/Research/Maize/MaizeSV/data/Lumpy_SVinfo.txt", head = T, fill = T)
 
-#OLD
-#lsizes = read.table("~/Documents/Research/MaizeSV/data/Lumpy_sizeNsamps_E2_p00_w300_d500.txt", head=T)
-#lsizes = read.table("~/Documents/Research/MaizeSV/data/Lumpy_sizeNsamps_E2_p00_w300.txt", head=T)
-
-lsum = lsizes %>% group_by(ref,stage,type) %>% summarize(n = n(), median = median(size)) %>% as.data.frame()
-
-#Genome STRiP summary files -- OLD MQ10
-#gsizes=read.table("~/Documents/Research/MaizeSV/data/gstrip_cnv_sizes.txt")
-#gstrip=read.table("~/Documents/Research/MaizeSV/data/gstrip_varPerSamp_defaults.txt", head=T)
-
-gsizes = read.table("~/Documents/Research/MaizeSV/data/gstrip_MQ20_INFOfields.txt", head=T)
 
 
 #Gene lengths from B73 gff
@@ -35,20 +24,6 @@ b73_geneLengths=read.table("~/Documents/Research/MaizeSV/data/B73_gene_lengths.t
 
 # Number of variants per gene
 bgenes=read.table("~/Documents/Research/MaizeSV/data/B73_genes_Variants_start2.txt")
-
-# Confidence interval lengths from Lumpy for different values of -p during lmerge stage
-ci=read.table("~/Documents/Research/MaizeSV/data/CI_lengths_W22_All.txt")
-#Remove BND mates to enable find nearest-neighbor distance and sort
-ci=ci[ci$V2=="chr1",]
-ci=ci[order(ci$V1,ci$V3),]
-
-#Find distance to nearest neighbor variant
-ci = ci %>%
-group_by(V1) %>%
-mutate(diff = pmin(abs(V3 - lag(V3)), abs(V3 - lead(V3)))) %>% as.data.frame()
-
-ci=ci[ci$V1==c("pre","00","05","10","30"),]
-ci$V1=factor(ci$V1,levels=c("30","10","05","00","pre"))
 
 #Number of variants per sample for Lumpy
 vps=read.table("~/Documents/Research/MaizeSV/data/variant_counts_per_sample_Lumpy_Raw.txt")

@@ -54,7 +54,7 @@ for samp,fqs in samps.items():
             if fq[0].isdigit():
                 lib = "a"
 
-            FQs = [s for s in os.listdir(args.f) if fq in s and "sing" not in s] # find absolute path to R1 and R2 fastqs based on the fastq name while excluding the singles file that 'sickle' would have produces
+            FQs = [s for s in os.listdir(args.f) if any([x in s for x in [fq + "_1", fq + "_2"]])  and "sing" not in s] # find absolute path to R1 and R2 fastqs based on the fastq name while excluding the singles file that 'sickle' would have produces
             FQs.sort() # This should sort the fastqs so that read 1 file appears before read 2
             
             # Check to make sure that the search for fastq files corresponding the name specified by 'fq' uniquely identifies a single paire of forward and reverse read files
@@ -66,7 +66,7 @@ for samp,fqs in samps.items():
             else:
                 tmp_name = fq + "_" + ref
                 tmpdir = args.o + tmp_name + "/"
-                cmd = 'mkdir -p ' + tmpdir + ';' + args.s + 'bin/speedseq align -M ' + args.m + ' -t ' + args.c + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'" -T ' + tmpdir + 'tmp -o ' + tmpdir + tmp_name + " " + refpath + " " + args.f + FQs[0] + " " + args.f + FQs[1] + ' && echo "' + tmp_name + ' SUCCESSFUL"'
+                cmd = 'mkdir -p ' + tmpdir + ';' + args.s + 'bin/speedseq align -M ' + args.m + ' -t ' + args.c + r' -R "@RG\tID:' + fq + r'\tSM:' + samp + r'\tLB:' + samp + lib + r'\tPL:illumina'+ r'" -T ' + tmpdir + 'tmp -o ' + tmpdir + "/" + tmp_name + " " + refpath + " " + args.f + "/" + FQs[0] + " " + args.f + "/" + FQs[1] + ' && echo "' + tmp_name + ' SUCCESSFUL"'
 
                 #Check if output BAM files already exist
                 if os.path.exists(tmpdir + tmp_name + ".bam"):

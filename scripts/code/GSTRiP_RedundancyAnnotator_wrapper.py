@@ -70,13 +70,13 @@ if __name__ == "__main__":
     parser.add_argument('--chr10_separate', action='store_true', help="run RA on chromosome 10 separately.  necessary for ph207 because gatk doesnt like the sorting of vcf tools")
     args = parser.parse_args()
 
-    if args.r in ["W22", "B73", "PHB47", "PH207"]:
+    if args.r in ["W22", "B73", "PHB47", "PH207", "Mo17"]:
         with open(args.f, 'r') as vcf_file:
             vcf_list = []
             for vcf in vcf_file:
                 vcf_list.append(vcf)
     else:
-        print("-r must be W22, B73, PHB47, or PH207")
+        print("-r must be W22, B73, PHB47, Mo17, or PH207")
 
     # Prepare temporary file names
     tmpvcf = args.o.replace(".vcf", ".concat.vcf")

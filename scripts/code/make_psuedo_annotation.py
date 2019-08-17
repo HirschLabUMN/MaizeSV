@@ -206,15 +206,14 @@ def writeOutput(split_gene_key, file_path, coord_dict, to_coords):
                 outlist = [-9, -9, -9]
             outlist.append(gene)
             entry_list = []
-            num_entries = len(SGK2[gene])
-            for entry in SGK2[gene]:
+            num_entries = len(split_gene_key[gene])
+            for entry in split_gene_key[gene]:
                 if any(k[6] == to_coords for k in entry): # Check if entry has any genes from current ref being converted to 
                     entry_list.append(",".join(entry))
                     entry_str = ",".join(entry[1:])
                     if outlist != [-9, -9, -9, gene]:
                         outfile.write("\t".join(outlist + [entry[0]]) + "\t" + entry_str + "\t" + str(num_entries) + "\n")
                 # entry_str = ";".join(entry_list)
-            
     return()
 
 def newNames(split_gene_key, coord_dict, to_coords, outfile):

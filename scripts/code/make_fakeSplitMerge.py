@@ -67,11 +67,11 @@ def getFakes(annotation_path, split_list, split_prop, merge_prop):
     return(splits, merged_A, merged_B, unchanged)
 
 
-def writeFakes(fake_splits, fake_merged_A, fake_merged_B, unchanged, outfile):
+def writeFakes(fake_splits, fake_merged_A, fake_merged_B, unchanged, outfile, min_exons):
     with open(outfile + ".txt", 'w') as out:
         for Gene, exon_list in fake_splits.items():
             num_exons = len(exon_list)
-            if num_exons >= 2:
+            if num_exons >= min_exons:
                 exon_list.sort(key=operator.itemgetter(2)) # Sort exons by start position
                 gene_start = exon_list[0][2]
                 gene_end = exon_list[-1][3]
@@ -110,20 +110,22 @@ def writeFakes(fake_splits, fake_merged_A, fake_merged_B, unchanged, outfile):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description = "This program generates fake split and merged sets of genes to be used as a null comparison with putative split/merged genes via calcVarRatios.R")
     parser.add_argument('-a', type=str, metavar='annotation_list', required=True, help='Comma separated string (no spaces) containing paths to annotation files.  annotation files should exons corresponding to a just a single transcript.')
-    parser.add_argument('-s', type=str, metavar='query_genes', required=True, help='File with geneID (one per line) for which you wish to retrieve first and last exon')
+    parser.add_argument('-q', type=str, metavar='query_genes', required=True, help='File with geneID (one per line) for which you wish to retrieve first and last exon')
     parser.add_argument('-o', type=str, metavar='out_suffix_list', required=True, help="comma separated list of output prefixes in SAME order as annotation list")
+    parser.add_argument('-m', type=int, metavar='minimum_exons', required=True, help="minimum number of exons required to make a fake split gene")
     parser.add_argument('-S', type=float, metavar='split_proportion', required=False, default=0.2, help="proportion of genes for which we want to make fake splits")
     parser.add_argument('-M', type=float, metavar='merged_proportion', required=False, default=0.3, help="proportion of genes for which we want to make fake merge")
+    parser.add_argument('-s', type=float, metavar='syntenic_genes', required=True, help="File containing syntenic genes for B and P. One gene name per line")
     parser.add_argument('-v', action="store_true")
     args = parser.parse_args()
 
     gffs = args.a.split(",")
     outs = args.o.split(",")
 
-    split_list = splitGenes(args.s)
+    split_list = splitGenes(args.q)
 
     for k, path in enumerate(gffs):
         fake_splits, fake_merged_A, fake_merged_B, unchanged = getFakes(path, split_list, args.S, args.M)
-        writeFakes(fake_splits, fake_merged_A, fake_merged_B, unchanged, outs[k])
+        writeFakes(fake_splits, fake_merged_A, fake_merged_B, unchanged, outs[k], args.m)
 
 

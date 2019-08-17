@@ -12,7 +12,7 @@ require(limma)
 require(dplyr)
 
 #grep -e DEL -e DUP -e INV -e MEI mergeSVcallers*.vcf | vawk '{split($1,a,"\."); print a[3],$2,$3,I$NCOL,I$TAGS}' > software.overlap.E2.txt
-Ovl = read.table("~/Documents/Research/MaizeSV/data/software.overlap.E2.txt", header=T)
+Ovl = read.table("~/Documents/Research/MaizeSV/data/software.overlap.E2_noGSTRiPmerge.txt", header=T)
 ro = read.table("~/Documents/Research/MaizeSV/data/merged_npz_refOverlap2.txt")
 head(setnames(ro, old = c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","V11","V12","V13","V14","V15","V16","V17","V18","V19"), new = c("ref1","ref2","id1","chrom1","pos1","end1","gene1","id2","chrom2","pos2","end2","gene2","info","type1","type2","len1","len2","sup1","sup2"))
 

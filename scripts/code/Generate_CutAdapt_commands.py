@@ -62,10 +62,10 @@ def build_command(readpath, outdir, cutadapt_path, sickle_path,readpath2 = "-99"
     sfile2 = ofile2.replace(".fq.gz","_sickle.fq")
     sfile3 = ofile.replace('_R1_cutadapt.fq.gz', '_singles_cutadapt_sickle.fq')
     # Append sickle command
-    cmd.append("; " + sickle_path + " pe -f " + outdir + ofile + " -r " + outdir + ofile2 + " -t sanger -o " + outdir + sfile1 + " -p " + outdir + sfile2 + " -s " + outdir + sfile3)
+    cmd.append(f"; {sickle_path} pe -f {outdir}{ofile} -r {outdir}{ofile2} -t sanger -o {outdir}{sfile1} -p {outdir}{sfile2} -s {outdir}{sfile3}")
 
     # Remove cutadapt output after sickle finishes
-    cmd.append("&& (rm " + outdir + ofile + "; rm " + outdir + ofile2 + "); gzip " + sfile1 + "; gzip " + sfile2 + "; gzip " + sfile3)
+    cmd.append(f"&& (rm {outdir}/{ofile}; rm {outdir}/{ofile2}); gzip {outdir}/{sfile1}; gzip {outdir}/{sfile2}; gzip {outdir}/{sfile3}")
     # And return the command as a string
     return ' '.join(cmd)
 
@@ -95,5 +95,5 @@ if __name__ == "__main__":
 
     for i, fq in enumerate(r_paths): # Loop over files, build commands, and print to output.
         cmd = build_command(fq, args.o, args.c, args.s, r2_paths[i])
-        print cmd
+        print(cmd)
 

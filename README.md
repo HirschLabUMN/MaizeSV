@@ -212,8 +212,9 @@ This will produce a number of files named _speedseq_commands_X_ where X will be 
 The script  **Generate_MergeBAMs_commands.py**  in _./scripts/code/_ can be used to generate commands to merge bams with _sambamba:_
 
     python Generate_MergeBAMs_commands.py -k _sample_fastq_key_  \
+      -b _bam_directory_
       -o _output_directory_ \
-      -r reference_path_file \
+      -r _reference_path_file_ \
       -c _number_of_cores_  > _sambamba_command_file_
 
 Run _sambamba_  commands as task array implemented in ./scripts/jobs/ **Sambamba_MergeBAMs.sh**.  Be sure to open **Sambamba_MergeBAMs.sh** __ and modify paths where necessary.  ALSO, be sure to modify the ‘ppn’ field to reflect the number of cores specified with **Generate_MergeBAMs_commands.py** and also adjust the ‘mem’ field appropriately. 
