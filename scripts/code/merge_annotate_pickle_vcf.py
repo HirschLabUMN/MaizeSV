@@ -25,6 +25,7 @@ def mergeVCFs(vcf_info, merged_file_name, merge_dist, merge_ovlp, mergeSVcallers
     id_string = ""
     for vcf in vcf_info[2:]:
         Pvcf = prepVCF(vcf[0])
+        pickleVCF(Pvcf)
         vcf_string += Pvcf + ","
         id_string += vcf[1] + ","
 
@@ -45,14 +46,43 @@ def annotateVCF(merged_vcf, bed_annt_file, outfile, annt_dist, SURVIVOR_ant_path
     out2, err2 = pp2.communicate()
     return([[out1, err1], [out2, err2]])
 
-def pickleVCF(annt_vcf):
+def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bin/", chroms = [i for i in range(1, 10)]):
     #MUST USE fields='*' in order to parse info relevant for SVs.
     #MUST USE numbers={'variants/overlapped_Annotations': X} to store multiple annotations.  Find 
 
-    #Convert vcf to numpy array
-    allel.vcf_to_npz(annt_vcf, annt_vcf.replace(".vcf.gz", ""), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True)
-    return()
+    shuff_vcf = annt_vcf.replace(".vcf.gz", ".ord.vcf.gz")
+    if template_vcf == -9:
+        cmd = f"export PERL5LIB={vcftools_perl_folder}; {vcftools_perl_folder}/vcf-sort {annt_vcf} | bgzip > {shuff_vcf}; tabix -p vcf {shuff_vcf}"
+        
+    else:
+        cmd = f"export PERL5LIB={vcftools_perl_folder}; {vcftools_perl_folder}/vcf-shuffle-cols -t {template_vcf} {annt_vcf} | {vcftools_perl_folder}/vcf-sort | bgzip > {shuff_vcf}; tabix -p vcf {shuff_vcf}"
 
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    out1, err1 = p.communicate()
+
+    assert 'failed' not in str(err1), print("Tabix sorting failed for master VCF")
+    #Convert vcf to numpy array
+
+    for chrom in chroms: #create npz file per chromosome
+        chrom_vcf = shuff_vcf.replace(".vcf.gz", f".{chrom}.vcf.gz")
+        base_cmd = f"tabix -h {shuff_vcf} {chrom} > {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}"
+
+        for pre in ["", "chr", "chr0"]:
+            # pdb.set_trace()
+            cmd = base_cmd + f"; tabix {shuff_vcf} {pre}{chrom} > {chrom_vcf.strip('.gz')}"
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            out1, err1 = p.communicate()
+            if os.stat(chrom_vcf.strip('.gz')).st_size != 0: break
+
+        cmd = f"cat {chrom_vcf.replace('.vcf.gz', '.hd.vcf')} {chrom_vcf.strip('.gz')} | bgzip > {chrom_vcf}; rm {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}; rm {chrom_vcf.strip('.gz')}"
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        out1, err1 = p.communicate()
+
+        allel.vcf_to_npz(chrom_vcf, annt_vcf.replace(".vcf.gz", f"{chrom}"), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True, types = {'calldata/GQ': 'i2'})
+        os.remove(chrom_vcf)
+
+    allel.vcf_to_npz(shuff_vcf, annt_vcf.replace(".vcf.gz", ""), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True, types = {'calldata/GQ': 'i2'})
+    return()
 
 
 if __name__ == "__main__":
@@ -82,9 +112,15 @@ if __name__ == "__main__":
                 vcf, ID = entry.split(",")
                 VCF_dict[ref_id].append([vcf, ID])
 
-    for ref in VCF_dict.keys():
-        mergefile = f"{args.o}/{ref}.merge.{args.s}"
-        mergeVCFs(VCF_dict[ref], mergefile, args.md, args.mr, args.mp)
+    for i, ref in enumerate(VCF_dict.keys()):
+        if i == 0: #Grab and save the first VCF to be used for column-reordering
+            ord_vcf = VCF_dict[ref][2][0]
+            print(f"Using {VCF_dict[ref][2][0]} for ordering columns in subsequent VCFs")
+        # pdb.set_trace()
+        if len(VCF_dict[ref][2:]) > 1:
+            mergefile = f"{args.o}/{ref}.merge.{args.s}"
+            mergeVCFs(VCF_dict[ref], mergefile, args.md, args.mr, args.mp)
+        else: mergefile = VCF_dict[ref][2][0]
         anntfile = f"{args.o}/{ref}.annt.{args.s}.gz"
         annotateVCF(mergefile, VCF_dict[ref][1], anntfile, args.ad, args.sp) 
-        pickleVCF(anntfile)
+        pickleVCF(anntfile, ord_vcf)

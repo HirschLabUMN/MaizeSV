@@ -5,7 +5,6 @@ import pdb
 
 
 def addGene(hom_dict, gene, alt_ref, entry):
-	if gene == "Zm00014a000149": pdb.set_trace()
 	if gene in hom_dict:
 		if alt_ref in hom_dict[gene] and entry not in hom_dict[gene][alt_ref]:
 			hom_dict[gene][alt_ref].append(entry)
@@ -23,10 +22,13 @@ def addFile(in_file, ref1dict, ref2dict, ref1key, ref2key):
                 line = line.split()
                 genes = line[11].split(";")
                 for gene in genes:
-                	gene = gene.split(",")
-                	gene = [x.replace('"','') for x in gene]
-                	ref2dict = addGene(ref2dict, gene[0], ref1key, line[0])
-                	ref1dict = addGene(ref1dict, line[0], ref2key, gene[0])
+                    gene = gene.split(",")
+                    gene = [x.replace('"','') for x in gene]
+                    if gene[0] == '0' or line[0] == '0':
+                        continue
+                    else:
+                       ref2dict = addGene(ref2dict, gene[0], ref1key, line[0])
+                       ref1dict = addGene(ref1dict, line[0], ref2key, gene[0])
     return(ref1dict, ref2dict)
 
 def Pickle(Dict, file):
