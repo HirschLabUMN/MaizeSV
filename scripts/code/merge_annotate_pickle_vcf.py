@@ -35,6 +35,31 @@ def mergeVCFs(vcf_info, merged_file_name, merge_dist, merge_ovlp, mergeSVcallers
 
     return(out, err)
 
+def padBedFile(bed_file, gene_buff):
+    new_bed = bed_file.replace("bed","tmp.bed")
+    new_file = open(new_bed, 'w')
+    # Create a SEPARATE bed entry for <gene_buff> distance upstream and downstream of gene for annotating VCF.
+    with open(bed_file, 'r') as bed:
+        for line in bed:
+            new_file.write(line)
+            line = line.split()
+            start = int(line[1])
+            end = int(line[2])
+            if int(line[1]) - gene_buff < 0: new_start = 0
+            else: new_start = int(line[1]) - gene_buff
+            new_end = int(line[2]) + gene_buff
+
+            upstream = f"{line[0]}\t{new_start}\t{start}\t{line[3]}-us{int(gene_buff / 1000)}kb\n"
+            downstream = f"{line[0]}\t{end}\t{new_end}\t{line[3]}-ds{int(gene_buff / 1000)}kb\n"
+
+            new_file.write(upstream)
+            new_file.write(downstream)
+
+    return(new_bed)
+
+
+
+
 def annotateVCF(merged_vcf, bed_annt_file, outfile, annt_dist, SURVIVOR_ant_path):
 
     cmd1 = f"{SURVIVOR_ant_path} -b {bed_annt_file} -i {merged_vcf} --anno_distance {annt_dist} -o {merged_vcf.replace('.vcf', '.tmp.vcf')}"
@@ -46,7 +71,7 @@ def annotateVCF(merged_vcf, bed_annt_file, outfile, annt_dist, SURVIVOR_ant_path
     out2, err2 = pp2.communicate()
     return([[out1, err1], [out2, err2]])
 
-def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bin/", chroms = [i for i in range(1, 10)]):
+def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bin/", chroms = [i for i in range(1, 11)]):
     #MUST USE fields='*' in order to parse info relevant for SVs.
     #MUST USE numbers={'variants/overlapped_Annotations': X} to store multiple annotations.  Find 
 
@@ -67,7 +92,7 @@ def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bi
         chrom_vcf = shuff_vcf.replace(".vcf.gz", f".{chrom}.vcf.gz")
         base_cmd = f"tabix -h {shuff_vcf} {chrom} > {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}"
 
-        for pre in ["", "chr", "chr0"]:
+        for pre in ["", "chr", "chr0"]: # This handles the fact that chromosomes are named differently across references
             # pdb.set_trace()
             cmd = base_cmd + f"; tabix {shuff_vcf} {pre}{chrom} > {chrom_vcf.strip('.gz')}"
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -78,9 +103,10 @@ def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bi
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         out1, err1 = p.communicate()
 
+        #write npz file for current chromosome
         allel.vcf_to_npz(chrom_vcf, annt_vcf.replace(".vcf.gz", f"{chrom}"), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True, types = {'calldata/GQ': 'i2'})
         os.remove(chrom_vcf)
-
+    #Write out master npz file for all chroms just in case.  Not currently using this.
     allel.vcf_to_npz(shuff_vcf, annt_vcf.replace(".vcf.gz", ""), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True, types = {'calldata/GQ': 'i2'})
     return()
 
@@ -96,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument('-ad', type=str, metavar='annotation_distance', required=False, default='2000', help = "distance from SV to buffer for looking for gene overlap when annotating merged vcf with gene info")
     parser.add_argument('-md', type=str, metavar='Merge_bp_distance', required=False, default='100', help = "Merge SVs with both breakpoints N BP away")
     parser.add_argument('-mr', type=str, metavar='Merge_recip_overlap', required=False, default='0', help = "Reciprocal overlap also required for merging")
+    parser.add_argument('-b', type=int, metavar='buffer', required=False, default=2000, help = "Adds this amount to either side of gene boundary for annotation of variants")
     # parser.add_argument('-r', action='store_true', help='restrictTo_mainChroms')
     args = parser.parse_args()
 
@@ -122,5 +149,7 @@ if __name__ == "__main__":
             mergeVCFs(VCF_dict[ref], mergefile, args.md, args.mr, args.mp)
         else: mergefile = VCF_dict[ref][2][0]
         anntfile = f"{args.o}/{ref}.annt.{args.s}.gz"
-        annotateVCF(mergefile, VCF_dict[ref][1], anntfile, args.ad, args.sp) 
+        bed_file = padBedFile(VCF_dict[ref][1], args.b)
+        annotateVCF(mergefile, bed_file, anntfile, args.ad, args.sp) 
         pickleVCF(anntfile, ord_vcf)
+        os.remove(bed_file)
