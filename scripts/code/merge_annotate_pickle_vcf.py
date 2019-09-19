@@ -41,7 +41,6 @@ def padBedFile(bed_file, gene_buff):
     # Create a SEPARATE bed entry for <gene_buff> distance upstream and downstream of gene for annotating VCF.
     with open(bed_file, 'r') as bed:
         for line in bed:
-            new_file.write(line)
             line = line.split()
             start = int(line[1])
             end = int(line[2])
@@ -49,9 +48,12 @@ def padBedFile(bed_file, gene_buff):
             else: new_start = int(line[1]) - gene_buff
             new_end = int(line[2]) + gene_buff
 
-            upstream = f"{line[0]}\t{new_start}\t{start}\t{line[3]}-us{int(gene_buff / 1000)}kb\n"
-            downstream = f"{line[0]}\t{end}\t{new_end}\t{line[3]}-ds{int(gene_buff / 1000)}kb\n"
 
+            upstream = f"{line[0]}\t{new_start}\t{start}\t{line[3]}-us-{int(gene_buff / 1000)}kb\n"
+            gene = f"{line[0]}\t{start}\t{end}\t{line[3]}-gene-{int(gene_buff / 1000)}kb\n"
+            downstream = f"{line[0]}\t{end}\t{new_end}\t{line[3]}-ds-{int(gene_buff / 1000)}kb\n"
+
+            new_file.write(gene)
             new_file.write(upstream)
             new_file.write(downstream)
 
