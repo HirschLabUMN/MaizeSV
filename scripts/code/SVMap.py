@@ -4,6 +4,7 @@ import argparse
 import pdb
 import line_profiler
 from itertools import compress
+import os
 
 def getInfo(NPZ_file, fields = ['variants/overlapped_Annotations', 'variants/CHROM', 'variants/ID', 'variants/POS', 'variants/END', 'variants/SVTYPE', 'calldata/GT', 'calldata/GQ', 'samples', 'variants/NSAMP', 'variants/SR', 'variants/PE']):
     info = []
@@ -17,7 +18,9 @@ def getInfo(NPZ_file, fields = ['variants/overlapped_Annotations', 'variants/CHR
 
 
 # @profile
-def findOverlap(ref, alt_ref, NPZ, gq_thresh = 50, chrom_num = 10):
+def findOverlap(ref, alt_ref, NPZ, gq_thresh, tmp_dir, chrom_num = 10):
+    unmatched_file = open(f"{tmp_dir}/{ref}-{alt_ref}_unmatched.txt", 'w')
+    matched = []
     homs = pickle.load(open(NPZ[ref][1], 'rb')) # Load dictionaries containing homologs for current reference
     for chrom in range(1, chrom_num+1):
         ref_npz = NPZ[ref][0].strip(".npz") + f"{chrom}.npz"
@@ -39,6 +42,7 @@ def findOverlap(ref, alt_ref, NPZ, gq_thresh = 50, chrom_num = 10):
                 mgq = np.mean(GQ[idx]) #Mean genotype quality for current reference
                 ref_idx = [k for k in range(0, len(samples)) if ref==samples[k]][0]
                 gt_ref_2ref = sum(GT[idx][ref_idx]) #Genotype of current reference genotype mapped to the current reference
+                gq_ref_2ref = GQ[idx][ref_idx]
                 gq_pass = [False if i < gq_thresh else True for i in GQ[idx]] # bool array to track whether genotype passes quality threshhold 
 
                 #Get support unit (SU) info from Lumpy.  Two types are discordant paired reads (PE) and split reads (SR).
@@ -57,7 +61,9 @@ def findOverlap(ref, alt_ref, NPZ, gq_thresh = 50, chrom_num = 10):
                 var_genes = len(gene_ids) #Number of genes that overlap with this variant
 
                 if var_genes == 0:
-                    print(ref, "none", idx, var_genes, chrom, pos, end, -9, -9, -9, -9, -9, -9, -9, svtype, -9, length, -9, -9, np.shape(gt)[0], -9, -9, -9, mgq, -9, gt_ref_2ref, -9, -9, -9, pe, sr, num_hets, num_alt)
+                    # print(ref, "none", idx, var_genes, chrom, pos, end, -9, -9, -9, -9, -9, -9, -9, -9, svtype, -9, length, -9, -9, np.shape(gt)[0], -9, -9, -9, mgq, -9, gt_ref_2ref, -9, -9, -9, pe, sr, num_hets, num_alt)
+                    unmatched_line = f"{ref} none {chrom}_{idx} {var_genes} {chrom} {pos} {end} -9 -9 -9 -9 -9 -9 -9 -9 {svtype} -9 {length} -9 -9 {np.shape(gt)[0]} -9 -9 -9 {mgq} -9 {gt_ref_2ref} -9 -9 -9 {gq_ref_2ref} -9 -9 -9 {pe} {sr} {num_hets} {num_alt}\n"
+                    unmatched_file.write(unmatched_line)
                 else:        
                     for gene in gene_ids: # Loop over all genes that overlap with this variant
                         # pdb.set_trace()
@@ -73,9 +79,10 @@ def findOverlap(ref, alt_ref, NPZ, gq_thresh = 50, chrom_num = 10):
                             alt_homs = homs[gene][alt_ref] 
                             num_homs = len(alt_homs)
                         except KeyError:
-                            #print UNMATCHED output
+                            #print UNMATCHED output::ISSUE:what if this variant is matched for another alt_ref. print all these to single file? Keep list of matched samples? and then cat unmatched variants that are not matched 
                             num_homs = 0
-                            print(ref, "none", idx, var_genes, chrom, pos, end, gene, location, num_homs, -9, -9, -9, -9, svtype, -9, length, -9, -9, np.shape(gt)[0], -9, -9, -9, mgq, -9, gt_ref_2ref, -9, -9, -9, pe, sr, num_hets, num_alt)
+                            unmatched_line = f"{ref} none {chrom}_{idx} {var_genes} {chrom} {pos} {end} {gene} {location} {num_homs} -9 -9 -9 -9 -9 {svtype} -9 {length} -9 -9 {np.shape(gt)[0]} -9 -9 -9 {mgq} -9 {gt_ref_2ref} -9 -9 -9 {gq_ref_2ref} -9 -9 -9 {pe} {sr} {num_hets} {num_alt}\n"
+                            unmatched_file.write(unmatched_line)
                             continue
 
                         for i in range(0, np.shape(alt_vars)[0]): #Loop over variants in alt_vcf
@@ -102,6 +109,11 @@ def findOverlap(ref, alt_ref, NPZ, gq_thresh = 50, chrom_num = 10):
 
                                     gt_alt_2alt = sum(alt_GT[i][alt_alt_idx])
                                     gt_ref_2alt = sum(alt_GT[i][ref_alt_idx])
+
+                                    gq_alt_2ref = GQ[idx][alt_ref_idx]
+
+                                    gq_alt_2alt = alt_GQ[i][alt_alt_idx]
+                                    gq_ref_2alt = alt_GQ[i][ref_alt_idx]
 
                                     alt_gq_pass = [False if i < gq_thresh else True for i in alt_GQ[i]]
                                     dual_pass = [True if j * k == 1 else False for j,k in zip(gq_pass, alt_gq_pass)] # bool array for genotypes that pass in both
@@ -139,22 +151,39 @@ def findOverlap(ref, alt_ref, NPZ, gq_thresh = 50, chrom_num = 10):
                                     print("no genotype info for one of the VCFs")
 
                                 #print MATCHED output    
-                                print(ref, alt_ref, idx, var_genes, chrom, pos, end, gene, location, num_homs, i, alt_pos, alt_end, alt_gene, alt_loc, svtype, alt_type, length, alt_len, filt_dist, num_genos, prop_dist_filt, raw_dist, prop_dist, mgq, amgq, gt_ref_2ref, gt_alt_2ref, gt_ref_2alt, gt_alt_2alt, pe, sr, num_hets, num_alt)
-  
+                                print(ref, alt_ref, f"{chrom}_{idx}", var_genes, chrom, pos, end, gene, location, num_homs, f"{chrom}_{i}", alt_pos, alt_end, alt_gene, alt_loc, svtype, alt_type, length, alt_len, filt_dist, num_genos, prop_dist_filt, raw_dist, prop_dist, mgq, amgq, gt_ref_2ref, gt_alt_2ref, gt_ref_2alt, gt_alt_2alt, gq_ref_2ref, gq_alt_2ref, gq_ref_2alt, gq_alt_2alt, pe, sr, num_hets, num_alt)
+                                matched.append(f"{ref}-{chrom}_{idx}")
+    return(matched)
+
+def recoverNoMatch(matched, tmp_dir):
+    files = [f for f in os.listdir(tmp_dir) if "unmatched" in f]
+    printed = []
+    for file in files:
+        # pdb.set_trace()
+        with open(f"{tmp_dir}/{file}", 'r') as unmatched:
+            for line in unmatched:
+                line1 = line.split()
+                ID = f"{line1[0]}-{line1[2]}"
+                if ID not in matched and ID not in printed:
+                    print(line.strip())
+                    printed.append(ID)
+        os.remove(f"{tmp_dir}/{file}")
+
             
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', type=str, metavar='npz_file', required=True, help='tab delimited file with key name used in homologue dictionary (e.g. B73, W22, PHB47, and PH207) followed by the npz file of the converted vcf')
     parser.add_argument('-gq', type=int, metavar='genotype_quality_threshold', default=30)
+    parser.add_argument('-d', type=str, metavar='tmp_directory', default="/Users/pmonnahan/Documents")
     # parser.add_argument('-r', action='store_true', help='restrictTo_mainChroms')
     args = parser.parse_args()
 
     NPZ = {}
 
     #print header of output
-    print("ref alt_ref varID var_genes chrom pos end gene location num_homs altID alt_pos alt_end alt_gene alt_loc svtype alt_type length alt_len filt_dist num_genos prop_dist_filt raw_dist prop_dist mgq amgq gt_ref_2ref, gt_alt_2ref, gt_ref_2alt, gt_alt_2alt, pe, sr, num_hets, num_alt")
-
+    print("ref alt_ref varID var_genes chrom pos end gene location num_homs altID alt_pos alt_end alt_gene alt_loc svtype alt_type length alt_len filt_dist num_genos prop_dist_filt raw_dist prop_dist mgq amgq gt_ref_2ref gt_alt_2ref gt_ref_2alt gt_alt_2alt gq_ref_2ref gq_alt_2ref gq_ref_2alt gq_alt_2alt pe sr num_hets num_alt")
+    Matched = []
     with open(args.f, 'r') as npz_file:
         for line in npz_file:
             ref, npz, homs = line.strip().split()
@@ -163,7 +192,10 @@ if __name__ == "__main__":
         # pdb.set_trace()
         for alt_ref in NPZ:
             if ref != alt_ref:
-                findOverlap(ref, alt_ref, NPZ, args.gq)
+                matched = findOverlap(ref, alt_ref, NPZ, args.gq, args.d)
+                Matched += matched
+    Matched = list( dict.fromkeys(Matched) ) #Removes duplicates for faster searching
+    recoverNoMatch(Matched, args.d)
 
 
         # len(bvcf['variants/overlapped_Annotations'][1])

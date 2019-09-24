@@ -92,8 +92,8 @@ def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bi
 
     for chrom in chroms: #create npz file per chromosome
         chrom_vcf = shuff_vcf.replace(".vcf.gz", f".{chrom}.vcf.gz")
-        base_cmd = f"tabix -h {shuff_vcf} {chrom} > {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}"
-
+        base_cmd = f"tabix -H {shuff_vcf} {chrom} > {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}"
+        # pdb.set_trace()
         for pre in ["", "chr", "chr0"]: # This handles the fact that chromosomes are named differently across references
             # pdb.set_trace()
             cmd = base_cmd + f"; tabix {shuff_vcf} {pre}{chrom} > {chrom_vcf.strip('.gz')}"
