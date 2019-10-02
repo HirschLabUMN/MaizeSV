@@ -1,0 +1,188 @@
+---
+title: "SVMap_analysis"
+author: "Patrick Monnahan"
+date: "8/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+scaleFUN <- function(x) sprintf("%.0f", x)
+
+library(formattable)
+library(ggridges)
+
+mutate=dplyr::mutate
+select=dplyr::select
+filter=dplyr::filter
+summarize=dplyr::summarise
+distinct=dplyr::distinct
+
+sv10 = read.table("~/Documents/Research/Maize/MaizeSV/data/SVmap_E3_results_lumpy_gq10b.txt", head = T)
+sv50 = read.table("~/Documents/Research/Maize/MaizeSV/data/SVmap_E3_results_lumpy_gq50b.txt", head = T)
+sv30 = read.table("~/Documents/Research/Maize/MaizeSV/data/SVmap_E3_results_lumpy_gq30b.txt", head = T)
+
+sv50['gq']="50"
+sv10['gq']="10"
+sv30['gq'] = "30"
+
+sv = rbind(sv50, sv10)
+sv = rbind(sv, sv30)
+
+sv %<>% mutate(size_diff = (length - alt_len)^2 / mean(c(length, alt_len)))
+
+```
+
+#Basic Tables and Figures comparing annotations.  Num. and Length of genes, number of homologs etc
+```{r}
+homs = read.table("~/Documents/Research/Maize/MaizeSV/misc/homologs.txt")
+homs %<>% mutate(ref = V1, gene = V2, alt = V3, altGene = V4) %>% select(ref, gene, alt, altGene)
+
+# homs %>% group_by(ref, gene, alt) %>% summarize(n = n()) %>% ggplot(aes(x = n, fill = ref)) + geom_histogram(position=position_dodge())
+
+homs %>% mutate(Reference = ref) %>% select(-ref) %>% group_by(Reference, gene, alt)  %>% summarize(n = n()) %>% group_by(Reference, alt, `# Homologs` = cut(n, breaks = c(0,1.1,2.1,3.1,1000000), labels = c("1","2","3",">3"))) %>% summarize(N = n()) %>% spread(alt,N) %>% formattable()
+
+ph = read.table("~/Documents/Research/Maize/references/PH207_genesOnly.chr.bed", stringsAsFactors = F)
+mo = read.table("~/Documents/Research/Maize/references/Mo17_genesOnly.bed", stringsAsFactors = F)
+w22 = read.table("~/Documents/Research/Maize/references/W22_genesOnly.bed", stringsAsFactors = F)
+b73 = read.table("~/Documents/Research/Maize/references/B73_genesOnly2.bed", stringsAsFactors = F)
+phb = read.table("~/Documents/Research/Maize/references/PHB47_genesOnly.bed", stringsAsFactors = F)
+
+ph %<>% mutate(ref = "PH207") %>% select(ref, V1, V2, V3, V4) %>% filter(V1 %in% c("chr02","chr03","chr04","chr05","chr06","chr07","chr08","chr09","chr10","chr01"))
+mo %<>% mutate(ref = "Mo17") %>% select(ref, V1, V2, V3, V4) %>% filter(substr(V1,1,3)=="chr")
+w22 %<>% mutate(ref = "W22") %>% select(ref, V1, V2, V3, V4) %>% filter(substr(V1,1,3)=="chr")
+b73 %<>% mutate(ref = "B73") %>% select(ref, V1, V2, V3, V4)
+phb %<>% mutate(ref = "PHB47") %>% select(ref, V1, V2, V3, V4)
+
+beds = do.call(rbind, list(ph, mo, w22, b73, phb))
+
+#Similar number of genes across annotations, but much greater gene length and consequently gene space in PH207
+beds %>% mutate(length = abs(V3 - V2)) %>% group_by(ref) %>% summarize(Reference = unique(ref), `# Genes` = n(), `Total Length` = sum(length), `Mean Length`=mean(length)) %>% select(-ref) %>% formattable()
+
+beds %>% mutate(length = abs(V3 - V2)) %>% ggplot(aes(x = length/1000, fill = ref)) + geom_density(alpha =0.3) + scale_x_log10(name = "Gene Length (kb)") + scale_fill_discrete(name = "Reference")
+
+#Might be some relationship with mean gene length and likelihood of identifying duplicates?
+# SV = sv %>% distinct(ref, varID, svtype) %>% group_by(ref, svtype) %>% summarize(n=n()) %>% spread(svtype, n) %>% mutate(Total = DEL + DUP + INV + MEI)
+# Beds = beds %>% mutate(length = abs(V3 - V2)) %>% group_by(ref) %>% summarize(n = n(), TotalLength = sum(length), MeanLength=mean(length))
+# ll = merge(SV, Beds, by="ref")
+# ll %>% ggplot(aes(x = MeanLength, y = DUP)) + geom_point()
+```
+
+
+Basic Tables and Figures for SV detection differences among references without regard to matching
+```{r}
+#Number by type; Substantial variation across reference w/ PH207 having ~2.5k fewer variants than W22
+sv %>% distinct(ref, varID, svtype) %>% mutate(Reference = ref) %>% select(-ref) %>% group_by(Reference, svtype) %>% summarize(n=n()) %>% spread(svtype, n) %>% mutate(Total = DEL + DUP + INV + MEI) %>% formattable()
+
+#Mean genotype quality does not differ among references
+sv %>% filter(gq=="10") %>% distinct(ref, varID, svtype, mgq)%>% ggplot(aes(x = mgq, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + xlab("Mean Genotype Quality") + ylab("SV type") + ggtitle("Minimal effect of reference genome on mean genotype quality")
+
+#Similar size distributions across references
+sv %>% filter(gq=="30") %>% distinct(ref, varID, svtype, length)%>% ggplot(aes(x = length/1000, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("") +scale_x_log10(name = "SV Length (kb)")
+
+#PH207 has an abundance of DUPs with no split read support
+sv %>% filter(gq=="30") %>% distinct(ref, varID, svtype, sr)%>% ggplot(aes(x = sr + 1, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("") +scale_x_log10(name = "Number of Split Reads")
+#No differences in amount of paired read support
+sv %>% filter(gq=="30") %>% distinct(ref, varID, svtype, pe)%>% ggplot(aes(x = pe + 1, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("") +scale_x_log10(name = "Number of Discordant Paired Reads")
+
+#Lower heterozygosity in PHB47; greater heterozygosity in DUPs and INVs
+sv %>% filter(gq=="30" & num_genos > 10) %>% distinct(ref, varID, svtype, num_hets, num_genos) %>% mutate(prop_het = (num_hets + 1) / (num_genos + 1)) %>% ggplot(aes(x = prop_het, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("") + xlim(0,1) + xlab("Proportion of Heterozygous genotypes")
+
+#Fewer high frequency alternative alleles in PHB47
+sv %>% filter(gq=="30" & num_genos > 10 & svtype %in% c("DEL","DUP")) %>% distinct(ref, varID, svtype, num_alt, num_genos) %>% mutate(prop_alt = (num_alt + 1) / (num_genos + 1)) %>% ggplot(aes(x = prop_alt, fill = ref)) + geom_histogram(position = position_dodge(), col="white") + scale_fill_discrete(name = "Reference\nGenome") + facet_wrap(~svtype, scales = "free_y", ncol=1) + ggtitle("") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw()
+
+sv %>% filter(gq=="30" & num_genos > 10) %>% distinct(ref, varID, svtype, num_alt, num_genos) %>% mutate(prop_alt = (num_alt + 1) / (num_genos + 1)) %>% ggplot(aes(x = prop_alt, color = ref)) + geom_freqpoly(bins=100) + scale_fill_discrete(name = "Reference\nGenome") + facet_wrap(~svtype, scales = "free_y", ncol=1) + ggtitle("") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw()
+
+
+#WHAT ABOUT US VS DS VS GENE BODY HITS?
+#WHAT EFFECT OF GENE LENGTH?
+#SIMILAR NUMBERS OF GENES ANNOTATED, BUT ARE THEY SAME LENGTH?  DIFFS IN LENGTH * NUMBER DETERMINE TARGET SIZE OF SV SEARCH
+#NUMBER OF EACH GENES ASSOCIATED WITH EACH VARIANT?
+
+
+```
+
+Matching tables
+```{r}
+#Pairwise number of matches. ALL GENES
+sv %>% filter(svtype!="INV" & gq == "10" & alt_ref !="none") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% group_by(ref, alt_ref) %>% summarize(n = n()) %>% spread(ref, n) %>% formattable(digits = 2)
+#Pairwise number of matches. ONE TO ONE GENES
+sv %>% filter(svtype!="INV" & gq == "10" & alt_ref !="none" & num_homs==1) %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% group_by(ref, alt_ref) %>% summarize(n = n()) %>% spread(ref, n) %>% formattable(digits = 2)
+#Pairwise number of matches. After filtering for good matches
+sv %>% filter(((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & num_homs==1 & svtype != "INV" & prop_dist_filt < 0.5) %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% group_by(ref, alt_ref) %>% summarize(n = n()) %>% spread(ref, n) %>% formattable(digits = 2)
+
+#Number of alt_refs that are matched for each gene
+sv %>% filter(svtype!="INV" & gq == "30") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% select(ref, matches, n, sr, pe) %>% ggplot(aes(y = sr, x = matches, color = svtype)) + geom_point(alpha= 0.3) + geom_smooth(method = "lm", se = f)
+
+sv %>% filter(svtype!="INV" & gq == "30") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, n) %>% spread(ref, n) %>% formattable()
+
+#Same as above but proportion
+sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% group_by(ref,matches) %>% summarize(n = n(), meanGQ = mean(meanGQ)) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, prop) %>% spread(ref, prop) %>% formattable()
+#mean quality as function of number of distinct alt_ref matches
+sv %>% filter(svtype!="INV" & gq == "10" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref., mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot()
+```
+
+
+Unsorted
+```{r}
+
+
+
+
+
+#Does number of homologs vary by svtype?
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% distinct(ref, varID, svtype, num_homs) %>% ggplot(aes(x = num_homs, y = ref, fill = svtype)) + geom_density_ridges2(alpha = 0.3, scale =0.9)
+
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47" & num_homs !=-9 & num_homs < 10) %>% distinct(ref, varID, svtype, num_homs) %>% ggplot(aes(x = num_homs, fill = svtype)) + geom_histogram(position = position_dodge(), bins = 11) + facet_wrap(~ref) + xlab("Number of Homologs")
+
+
+#Correlation in genotype quality for matches (filtered by best matching genotypes)
+sv %>% filter(ref != "PHB47" & alt_ref != "none" & gq == "30") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, svtype, alt_ref, varID, mgq, amgq) %>% ggplot(aes(x = mgq, y = amgq, color = svtype)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm", se = F) + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + xlab("Mean Genotype Quality in CURRENT Reference") + ylab("Mean Genotype Quality in ALTERNATIVE Reference") + theme_bw() + ggtitle("Similar correlation in Genotype Quality for different pairs of references")
+#Density plots for number of pe or sr split by number of matches and svtype
+#Recodes variants with bad genotype matches as no-match
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Split Reads") + ylab("Reference")
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Discordant paired Reads") + ylab("Reference")
+#Total Support units
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + pe, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Total Support Units") + ylab("Reference")
+#Binning everything >=1
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5 & prop_dist_filt != -9) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = case_when(sum(match)==0 ~ "0", sum(match) > 0 ~ ">0")) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Support Units (PE + SR)") + ylab("Reference") + scale_fill_discrete(name = "Number of Alt Ref.\nMatches")
+#Density plots for number of pe or sr split by number of matches and svtype
+#No Recoding
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of discordant paired reads") + ylab("Reference")
+sv %>% filter(svtype!="INV" & gq == "30" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of split reads") + ylab("Reference")
+
+
+# Distributions of genotype distance following Filter for just best matching 
+sv %>% dplyr::filter(gq=="30" & alt_ref!="none") %>% group_by(ref, alt_ref, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+#Fill by number of homologs
+sv %>% dplyr::filter(gq=="30" & alt_ref!="none" & num_homs < 4) %>% group_by(ref, alt_ref, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, prop_dist_filt, num_homs) %>% ggplot(aes(x = prop_dist_filt, fill = as.character(num_homs))) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + scale_fill_discrete(name = "Number of Homologs") + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+#Fill by type
+sv %>% dplyr::filter(gq=="30" & alt_ref!="none") %>% group_by(ref, alt_ref, svtype, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, svtype, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt, fill = svtype)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+# Distributions of size differences following Filter for just best matching genotypes
+sv %>% group_by(ref, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff) %>% ggplot(aes(x = (size_diff + 1)/1000)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
+
+sv %>% dplyr::filter(gq=="50" & alt_ref!="none" & as.character(svtype)==as.character(alt_type)) %>% group_by(ref, alt_ref, svtype, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, svtype, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt, fill = svtype)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+#Fill by svtype
+sv %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff, svtype) %>% ggplot(aes(x = (size_diff + 1)/1000, fill = svtype)) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref)) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
+#Without MEI
+sv %>% filter(svtype!="MEI" & alt_type !="MEI") %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff, svtype) %>% ggplot(aes(x = (size_diff + 1)/1000, fill = svtype)) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref)) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
+
+sv %>% filter(num_homs == 1 & num_genos > 25 & gq == "30") %>% mutate(same_type = case_when(as.character(svtype)==as.character(alt_type) ~ "yes", as.character(svtype)!=as.character(alt_type) ~ "no")) %>% group_by(ref, alt_ref, varID) %>%  slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = log(size_diff), y = prop_dist_filt, fill = svtype, shape = same_type)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm")
+
+# find and plot those that are perfect matches for size and genotype
+sv %>% filter(size_diff==0 & prop_dist_filt==0 & num_genos > 5) %>% distinct(ref, alt_ref, varID, svtype, length) %>% group_by(ref, alt_ref, svtype) %>% summarize(n=n(), l = mean(length)) %>% as.data.frame() %>% gather(variable, value, -c(ref, alt_ref, svtype)) %>% ggplot(aes(x = ref, y = value, color = alt_ref, shape = svtype)) + geom_point(position = position_dodge(width = 0.3)) + facet_wrap(~variable, scales = "free_y") + ggtitle("filter(size_diff==0 & prop_dist_filt==0 & num_genos > 5)")
+
+#Genotype quality of for sequence data from each reference
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_alt_2ref, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9)
+
+#Reference bias in genotype quality scores
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_ref_2ref - gq_ref_2alt, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9) + xlab("Reference Bias in Genotype Quality\n(GQ of Ref seq. data mapped to Ref) - (GQ of Ref mapped to Alt)") + ylab("Reference")
+
+
+```
+

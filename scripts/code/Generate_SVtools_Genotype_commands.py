@@ -25,6 +25,7 @@ parser.add_argument('-v', type=str, metavar='merged_vcf', required=True, help='m
 parser.add_argument('-c', type=str, metavar='coord_file', required=True, help='path to coordinates file created via "create_coordinates -i merged.vcf -o coord_file"')
 parser.add_argument('-w', type=str, metavar='window_size', default="100", help='window size in which CNVnator will calculate depth')
 parser.add_argument('-s', type=str, metavar='path_to_speedseq_directory', default="/home/hirschc1/pmonnaha/software/speedseq/")
+parser.add_argument('-i', action='store_true', help="Indexes bam prior to running genotyping if flag is set")
 args = parser.parse_args()
 
 vcf = args.v
@@ -48,8 +49,9 @@ for bam in os.listdir(args.b):
         ref = bam.split("_")[1].split(".")[0] 
         sample = bam.split("_")[0]
         if ref in vcf: # Only use the bams that pertain to the same reference genome in the merged vcf file
-            cmd = ''
+            if args.i: cmd = f"module load liblzma;/panfs/roc/msisoft/samtools/1.7/bin/samtools index {args.b}/{bam};"
+            else: cmd = ''
             if args.v.endswith(".gz"): cmd += 'z'
-            cmd += "cat " + args.v + " | vawk --header '{  $6=\".\"; print }' | svtools genotype -B " + args.b + bam + " -l " + args.b + bam + r".json | sed 's/PR...=[0-9\.e,-]*\(;\)\{0,1\}\(\t\)\{0,1\}/\2/g' - > " + args.o + "gt/" + bam.strip(".bam") + ".vcf && svtools copynumber --cnvnator " + args.s + "bin/cnvnator -s " + sample + " -w " + args.w + " -r " + args.o + bam.strip(".bam") + "_tmp/cnvnator-temp/" + bam + ".hist.root -c " + args.c + " -i " + args.o + "gt/" + bam.strip(".bam") + ".vcf > " + args.o + "cn/" + bam.strip(".bam") + ".vcf"
+            cmd += f"cat " + args.v + " | vawk --header '{  $6=\".\"; print }' | svtools genotype -B " + args.b + bam + " -l " + args.b + bam + r".json | sed 's/PR...=[0-9\.e,-]*\(;\)\{0,1\}\(\t\)\{0,1\}/\2/g' - > " + args.o + "gt/" + bam.strip(".bam") + ".vcf && svtools copynumber --cnvnator " + args.s + "bin/cnvnator -s " + sample + " -w " + args.w + " -r " + args.o + bam.strip(".bam") + "_tmp/cnvnator-temp/" + bam + ".hist.root -c " + args.c + " -i " + args.o + "gt/" + bam.strip(".bam") + ".vcf > " + args.o + "cn/" + bam.strip(".bam") + ".vcf"
             print(cmd)
 
