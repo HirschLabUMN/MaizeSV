@@ -113,14 +113,20 @@ sv %>% filter(svtype!="INV" & gq == "10" & alt_ref !="none" & num_homs==1) %>% d
 sv %>% filter(((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & num_homs==1 & svtype != "INV" & prop_dist_filt < 0.5) %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% group_by(ref, alt_ref) %>% summarize(n = n()) %>% spread(ref, n) %>% formattable(digits = 2)
 
 #Number of alt_refs that are matched for each gene
-sv %>% filter(svtype!="INV" & gq == "30") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% select(ref, matches, n, sr, pe) %>% ggplot(aes(y = sr, x = matches, color = svtype)) + geom_point(alpha= 0.3) + geom_smooth(method = "lm", se = f)
+sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, n) %>% spread(ref, n) %>% formattable()
 
-sv %>% filter(svtype!="INV" & gq == "30") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, n) %>% spread(ref, n) %>% formattable()
+#Same as above but filtered for good matches
+sv %>% filter(((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & svtype != "INV" & prop_dist_filt < 0.5) %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, n) %>% spread(ref, n) %>% formattable()
+
+sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, n) %>% spread(matches, n) %>% formattable()
+
 
 #Same as above but proportion
 sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% group_by(ref,matches) %>% summarize(n = n(), meanGQ = mean(meanGQ)) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, prop) %>% spread(ref, prop) %>% formattable()
-#mean quality as function of number of distinct alt_ref matches
-sv %>% filter(svtype!="INV" & gq == "10" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref., mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot()
+
+
+
+#Upstream/downstream stuff
 ```
 
 
@@ -128,7 +134,8 @@ Unsorted
 ```{r}
 
 
-
+#mean quality as function of number of distinct alt_ref matches
+sv %>% filter(svtype!="INV" & gq == "10" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref., mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot()
 
 
 #Does number of homologs vary by svtype?
@@ -184,5 +191,30 @@ sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25)
 sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_ref_2ref - gq_ref_2alt, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9) + xlab("Reference Bias in Genotype Quality\n(GQ of Ref seq. data mapped to Ref) - (GQ of Ref mapped to Alt)") + ylab("Reference")
 
 
+```
+
+Candys request
+```{r}
+
+hom_num = 1
+Filt_dist = 0.1
+[1] 7414
+
+hom_num = 1
+Filt_dist = 0.5
+[1] 10949
+
+hom_num = 20
+Filt_dist = 0.1
+
+b_alts = sv %>% filter(ref == "B73" & ((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & num_homs <= hom_num & svtype != "INV" & prop_dist_filt < Filt_dist & gt_ref_2ref != -2) %>% distinct(ref, alt_ref, varID, altID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% filter(match==1) %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% distinct(VarID, AltID)
+
+p_alts = sv %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% filter(ref == "PH207" & !AltID %in% b_alts$VarID & ((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & num_homs <=hom_num & svtype != "INV" & prop_dist_filt < Filt_dist & gt_ref_2ref != -2) %>% distinct(ref, alt_ref, varID, altID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% filter(match==1) %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% select(VarID, AltID)
+
+w_alts = sv %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% filter(ref == "W22" & !(AltID %in% b_alts$VarID | AltID %in% p_alts$VarID) & ((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & num_homs <= hom_num & svtype != "INV" & prop_dist_filt < Filt_dist & gt_ref_2ref != -2) %>% distinct(ref, alt_ref, varID, altID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% filter(match==1) %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% select(VarID, AltID)
+
+m_alts = sv %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% filter(ref == "Mo17" & !(AltID %in% b_alts$VarID | AltID %in% p_alts$VarID | AltID %in% w_alts$VarID) & ((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type))) & gq == "10" & alt_ref !="none" & num_homs <= hom_num & svtype != "INV" & prop_dist_filt < Filt_dist & gt_ref_2ref != -2) %>% distinct(ref, alt_ref, varID, altID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% filter(match==1) %>% mutate(VarID = paste(ref, varID, sep=""), AltID = paste(alt_ref, altID, sep="")) %>% select(VarID, AltID)
+
+m_alts %>% distinct(VarID) %>% nrow() + p_alts %>% distinct(VarID) %>% nrow() + b_alts %>% distinct(VarID) %>% nrow() + w_alts %>% distinct(VarID) %>% nrow()
 ```
 

@@ -54,4 +54,5 @@ for bam in os.listdir(args.b):
             if args.v.endswith(".gz"): cmd += 'z'
             cmd += f"cat " + args.v + " | vawk --header '{  $6=\".\"; print }' | svtools genotype -B " + args.b + bam + " -l " + args.b + bam + r".json | sed 's/PR...=[0-9\.e,-]*\(;\)\{0,1\}\(\t\)\{0,1\}/\2/g' - > " + args.o + "gt/" + bam.strip(".bam") + ".vcf && svtools copynumber --cnvnator " + args.s + "bin/cnvnator -s " + sample + " -w " + args.w + " -r " + args.o + bam.strip(".bam") + "_tmp/cnvnator-temp/" + bam + ".hist.root -c " + args.c + " -i " + args.o + "gt/" + bam.strip(".bam") + ".vcf > " + args.o + "cn/" + bam.strip(".bam") + ".vcf"
             print(cmd)
+        else: print("Unable to relate bams to vcf; Consider renaming vcf to include bam ref suffix")
 

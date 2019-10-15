@@ -107,6 +107,7 @@ if [ $? -ne 0 ]; then
 	| bgzip -c > ${OUT}.sv.pruned.vcf.gz
 else
 	echo "Pruning pipeline failed"
+fi
 
 find ./gt/ -name "*.vcf" -printf "%f\n" | cut -d "_" -f 1 | awk '{print $1"\t2"}' > sex.txt
 
@@ -117,10 +118,11 @@ if [ $? -ne 0 ]; then
  	-a ${TE} \
  	-m large_sample \
 	| bgzip -c > ${OUT}.ls.vcf.gz
+fi
 
 #Filter out BND calls and keep only RETAINED calls
 if [ $? -ne 0 ]; then
     zgrep -v BND ${OUT}.ls.vcf.gz \
     | vawk --header '{if(I$RETAINED==1) print $0}' | bgzip -c > ${OUT}.ls.RT.vcf.gz
-
+fi
 
