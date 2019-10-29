@@ -395,6 +395,49 @@ Usage:
 
 ## SV Consolidation
 
+The purpose of the code described in this section is to match SVs in VCFs called against different reference genomes, based on associating homologous genes that have been annotated for each variant.  At this stage, the user should have multiple VCFs corresponding to the SAME samples mapped to different reference genomes.  If the same samples are not present across VCFs, the following steps will fail.  Additionally, it is assumed that the user will have run the Gene-key pipeline (https://github.com/HirschLabUMN/Split_genes/tree/master/Split_Merge_Pipeline; specifically, the output of "All_By_All_compare"), which links homologous genes across maize annotations.  
+
+The main task of linking SVs across reference genomes is done by the script _scripts/code/SVMap.py_, but there are at least two necessary steps to prepare (i.e. format and compress for fast access) the two major components mentioned above (the collection of VCFs, and the collection of gene-key files).  Use the _annotate_pickle_vcf.py_ script in _scripts/code_ to prepare the collection of VCFs.  
+
+    usage: annotate_pickle_vcf.py [-h] -f vcf_info_file -o output_directory -s
+                              output_suffix [-sp SURVIVOR_ant_path]
+                                [-ad annotation_distance] [-b buffer] \\
+    This script prepares the data contained in multiple SV VCFs (corresponding to
+    the same samples called against different reference genomes) for subsequent
+    analysis with SVMap.py (which links the SVs across reference genomes).
+    optional arguments:
+      -h, --help            show this help message and exit
+      -f vcf_info_file      tab delimited file with each line containing 1.) the
+                            reference genotype ID (e.g. B73; used for naming), 2.)
+                            a bed file with gene locations ONLY and 3.) the vcf
+                            file.
+      -o output_directory   Output Directory
+      -s output_suffix      Output Suffix
+      -sp SURVIVOR_ant_path
+      -ad annotation_distance
+                            distance from SV to buffer for looking for gene
+                            overlap when annotating merged vcf with gene info;
+                            this is accomodated by -b, which provides more
+                            explicit info regarding the location where the overlap
+                            is found, so this can be left at 0 (default)
+See _vcf_list_AnnotatePickle.txt_ in _accessories_ for an example of the `<vcf_info_file>`.
+
+To prepare the collection of gene-key files, use the script code/pickle_homologue_dicts.py
+
+    usage: pickle_homologue_dicts.py [-h] -f geneKey_fileList -o output_directory \\
+    This script prepares the gene-keys produced by JM's gene-key pipeline (https:/
+    /github.com/HirschLabUMN/Split_genes/tree/master/Split_Merge_Pipeline), so
+    that they can be used to link SVs across references (SVMap.py) \\ \\ 
+    optional arguments:
+      -h, --help           show this help message and exit
+      -f geneKey_fileList  tab delimited file 3 columns: reference1 reference2
+                       ref1-ref1_gene-key-file. Note that there is a
+                       directionality to the gene-key files. E.g. The gene-key
+                       file, 500kb_W22_B73_AllbyAll_res.txt, specifically
+                       corresponds to W22 as reference1 and B73 as reference2
+      -o output_directory
+See scripts/accessory/geneKey_fileList.txt for the list of gene-key files that were used.
+
 
 ### Notes
 

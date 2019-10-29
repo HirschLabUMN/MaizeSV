@@ -1,13 +1,17 @@
 #!/usr/bin/env python
 """
 Author: Patrick Monnahan
-Purpose: This script generates commands for merging files with sambamba.  These commands can be executed in parallel using GNU parallel or a task array.  Be sure to use the same Sample_Fastq_Key (-s) and output_directory (-o) as was used with Generate_SpeedSeq_commands.py
+Purpose: This script prepares the data contained in multiple SV VCFs (corresponding to the same samples called against different reference genomes) for subsequent analysis with SVMap.py (which links the SVs across reference genomes).  
+Requirements: SURVIVOR_ant, vcftools, and bgzip/tabix are all required for this script.
  Takes the following arguments:
-    -s :  REQUIRED: Space-delimited file to key that links fastq files to sample names. fastq file names can be partial, but must be complete enough to uniquely identify the fastq file. One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
-    -o :  REQUIRED: Full path to output directory in which the MERGED bam files will be written
-    -r :  REQUIRED: Space-delimited file to key that links reference fasta path to reference names to be used in BAM naming. Format: Reference_name Reference_path'
-    -c :  Number_of_cores
-    -s :  path to the speedseq directory
+    -f :  REQUIRED: tab delimited file with each line containing 1.) the reference genotype ID (e.g. B73; used for naming), 2.) a bed file with gene locations ONLY and 3.) the vcf file.')
+    -o :  REQUIRED: Full path to output directory in which the pickled VCFs will be written
+    -s :  REQUIRED: Output suffix. 
+    -b : Buffer distance. Adds this amount to either side of gene boundary for annotation of variants.  Actually, creates a separate bed entry for upstream and downstream regiions and the associated gene ID, so that we can get specific info on whether variant overlapped with gene body and/or US/DS regions.
+    -sp : full path to installation of SURVIVOR_ant.  Default is /Users/pmonnahan/Documents/Research/Maize/MaizeSV/software/SURVIVOR_ant/bin/survivor_ant-core-0.1.0/survivor_ant.  See README for installation instructions of SURVIVOR_ant.
+    -vp : path to the directory containing the perl modules of vcftools.  Default is that it is installed in /usr/local/bin/.
+    -ad: Flag passed to SURVIVOR_ant specifying the distance from SV to buffer for looking for gene overlap when annotating vcf with gene info; this is accomodated by -b, which provides more explicit info regarding the location where the overlap is found, so this can be left at 0 (default).  
+
 """
 
 
@@ -60,51 +64,55 @@ def annotateVCF(merged_vcf, bed_annt_file, outfile, annt_dist, SURVIVOR_ant_path
     return([[out1, err1], [out2, err2]])
 
 def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bin/", chroms = [i for i in range(1, 11)]):
-    #MUST USE fields='*' in order to parse info relevant for SVs.
-    #MUST USE numbers={'variants/overlapped_Annotations': X} to store multiple annotations.  Find 
+    '''This function takes the annotated VCF and: 1.) reorders columns, 2.) Parses by chromosome 3.) and create a compressed/pickled NPZ file containing per chromosome VCF data.'''
 
+    #Reorder columns in the vcf based on ordering in the provided template vcfs.  This is necessary for SVMap to calculate genotypic distance correctly.
     shuff_vcf = annt_vcf.replace(".vcf.gz", ".ord.vcf.gz")
-    if template_vcf == -9:
-        cmd = f"export PERL5LIB={vcftools_perl_folder}; {vcftools_perl_folder}/vcf-sort {annt_vcf} | bgzip > {shuff_vcf}; tabix -p vcf {shuff_vcf}"
-        
+    if template_vcf == -9: 
+        cmd = f"export PERL5LIB={vcftools_perl_folder}; {vcftools_perl_folder}/vcf-sort {annt_vcf} | bgzip > {shuff_vcf}; tabix -p vcf {shuff_vcf}"        
     else:
         cmd = f"export PERL5LIB={vcftools_perl_folder}; {vcftools_perl_folder}/vcf-shuffle-cols -t {template_vcf} {annt_vcf} | {vcftools_perl_folder}/vcf-sort | bgzip > {shuff_vcf}; tabix -p vcf {shuff_vcf}"
 
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out1, err1 = p.communicate()
 
+    #Do not proceed with VCF conversion if reordering of columns failed.
     assert 'failed' not in str(err1), print("Tabix sorting failed for master VCF")
-    #Convert vcf to numpy array
 
+    #Convert vcf to numpy array
     for chrom in chroms: #create npz file per chromosome
         chrom_vcf = shuff_vcf.replace(".vcf.gz", f".{chrom}.vcf.gz")
         base_cmd = f"tabix -H {shuff_vcf} {chrom} > {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}"
         # pdb.set_trace()
         for pre in ["", "chr", "chr0"]: # This handles the fact that chromosomes are named differently across references
             # pdb.set_trace()
-            cmd = base_cmd + f"; tabix {shuff_vcf} {pre}{chrom} > {chrom_vcf.strip('.gz')}"
+            cmd = base_cmd + f"; tabix {shuff_vcf} {pre}{chrom} > {chrom_vcf.strip('.gz')}" #This will produce a file of size 0 if tabix cannot find the chromosome in the vcf
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             out1, err1 = p.communicate()
-            if os.stat(chrom_vcf.strip('.gz')).st_size != 0: break
+            if os.stat(chrom_vcf.strip('.gz')).st_size != 0: break #The loop continues until the chromosome specification in the above tabix command is successful in retreiving the variants for that chromosome.
 
-        cmd = f"cat {chrom_vcf.replace('.vcf.gz', '.hd.vcf')} {chrom_vcf.strip('.gz')} | bgzip > {chrom_vcf}; rm {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}; rm {chrom_vcf.strip('.gz')}"
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        cmd = f"cat {chrom_vcf.replace('.vcf.gz', '.hd.vcf')} {chrom_vcf.strip('.gz')} | bgzip > {chrom_vcf}; rm {chrom_vcf.replace('.vcf.gz', '.hd.vcf')}; rm {chrom_vcf.strip('.gz')}" #Readds original header to the chromosome vcf and removes intermediate fiiles
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) #execute above command
         out1, err1 = p.communicate()
 
         #write npz file for current chromosome
+            #MUST USE fields='*' in order to parse info relevant for SVs.
+            #MUST USE numbers={'variants/overlapped_Annotations': X} to store multiple annotations. 
         allel.vcf_to_npz(chrom_vcf, annt_vcf.replace(".vcf.gz", f"{chrom}"), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True, types = {'calldata/GQ': 'i2'})
         os.remove(chrom_vcf)
+
     #Write out master npz file for all chroms just in case.  Not currently using this.
     allel.vcf_to_npz(shuff_vcf, annt_vcf.replace(".vcf.gz", ""), fields='*', numbers={'variants/overlapped_Annotations': 5}, overwrite=True, types = {'calldata/GQ': 'i2'})
     return()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='This script prepares the data contained in multiple SV VCFs (corresponding to the same samples called against different reference genomes) for subsequent analysis with SVMap.py (which links the SVs across reference genomes).')
+    parser = argparse.ArgumentParser(description='This script prepares the data contained in multiple SV VCFs (corresponding to the same samples called against different reference genomes) for subsequent analysis with SVMap.py (which links the SVs across reference genomes).\nRequirements: SUVIVOR_ant, vcftools, and bgzip/tabix')
     parser.add_argument('-f', type=str, metavar='vcf_info_file', required=True, help='tab delimited file with each line containing 1.) the reference genotype ID (e.g. B73; used for naming), 2.) a bed file with gene locations ONLY and 3.) the vcf file.')
     parser.add_argument('-o', type=str, metavar='output_directory', required=True, help='Output Directory')
     parser.add_argument('-s', type=str, metavar='output_suffix', required=True, help='Output Suffix')
     parser.add_argument('-sp', type=str, metavar='SURVIVOR_ant_path', required=False, default='/Users/pmonnahan/Documents/Research/Maize/MaizeSV/software/SURVIVOR_ant/bin/survivor_ant-core-0.1.0/survivor_ant')
+    parser.add_argument('-vp', type=str, metavar='vcftools_perl_folder', required=False, default='/usr/local/bin/')
     parser.add_argument('-ad', type=str, metavar='annotation_distance', required=False, default='0', help = "distance from SV to buffer for looking for gene overlap when annotating merged vcf with gene info; this is accomodated by -b, which provides more explicit info regarding the location where the overlap is found, so this can be left at 0 (default)")
     parser.add_argument('-b', type=int, metavar='buffer', required=False, default=2000, help = "Adds this amount to either side of gene boundary for annotation of variants")
     args = parser.parse_args()
@@ -121,5 +129,5 @@ if __name__ == "__main__":
             padded_bed_file = padBedFile(bed_file, args.b)
             annotateVCF(vcf, padded_bed_file, anntfile, args.ad, args.sp) 
             if i==0: template_vcf = vcf #This is necessary for reordering sample names in the VCFs so that all are in same order across references.
-            pickleVCF(anntfile, template_vcf)
+            pickleVCF(anntfile, template_vcf, args.vp)
             os.remove(padded_bed_file)

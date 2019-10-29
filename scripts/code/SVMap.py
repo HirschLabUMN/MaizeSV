@@ -1,3 +1,5 @@
+
+
 import pickle
 import numpy as np
 import argparse
@@ -142,6 +144,9 @@ def findOverlap(ref, alt_ref, NPZ, gq_thresh, tmp_dir, min_ind, chrom_num = 10):
                                         raw_dist = np.linalg.norm(gt-alt_gt) #Distance calculated on unfiltered genotypes
                                         max_dist = np.linalg.norm(np.zeros((100, 2))-np.full((100,2), 1))
                                         prop_dist = raw_dist / max_dist
+
+                                        #SOMEWHERE IN HERE CREATE FUNCTIONALITY TO IDENTIFY SAMPLES WITH DISCORDANT GENOTYPES
+                                        #ALSO ADD NUMBER OF MISMATCHED GENOTYPES?
                                     else:
                                         filt_dist, filt_max_dist, prop_dist, prop_dist_filt, raw_dist, max_dist = [-9 for x in range(0,6)]
                                         
@@ -176,9 +181,9 @@ def recoverNoMatch(matched, tmp_dir):
             
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-f', type=str, metavar='npz_file', required=True, help='tab delimited file with key name used in homologue dictionary (e.g. B73, W22, PHB47, and PH207) followed by the npz file of the converted vcf')
-    parser.add_argument('-gq', type=int, metavar='genotype_quality_threshold', default=0)
+    parser = argparse.ArgumentParser(description="This is the primary script that is used to cross-validate SV variants across reference genomes.  Users should have run the necessary scripts to prepare the VCFs (output of annotate_pickle_vcfs.py) and gene-keys (output of pickle_homologue_dicts.py")
+    parser.add_argument('-f', type=str, metavar='npz_file', required=True, help='tab delimited file with 3 colums: 1.)key name used in homologue dictionary (e.g. B73, W22, PHB47, and PH207) 2.) the npz file of the converted vcf (created with annotate_pickle_vcf.py), and 3.) the compressed dictionary containing homolog info (created by pickle_homologue_dicts.py)')
+    parser.add_argument('-gq', type=int, metavar='genotype_quality_threshold', default=0, help="Filter all genotypes below this threshold. Directly impacts matching and subsequently genotype distance calculations")
     parser.add_argument('-mi', type=int, metavar='minimum_individuals', default=0, help="minimum number of inidividuals (with sufficient genotype quality in both references) needed to calculate a distance between genotype matrices")
     parser.add_argument('-d', type=str, metavar='tmp_directory', default="/Users/pmonnahan/Documents")
     args = parser.parse_args()
@@ -193,6 +198,9 @@ if __name__ == "__main__":
         for line in npz_file:
             ref, npz, homs = line.strip().split() #Each line should have the reference identifier, npz (i.e. compressed vcf file), and compressed homolog dictiionary
             NPZ[ref] = [npz, homs]
+
+    assert len(NPZ.keys()) > 1, print("Check format of npz_file.  Did not find files for multiple references.")
+
     for ref in NPZ:
         # pdb.set_trace()
         for alt_ref in NPZ:

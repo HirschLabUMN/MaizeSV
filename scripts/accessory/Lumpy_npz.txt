@@ -1,0 +1,5 @@
+B73	/Users/pmonnahan/Documents/Research/Maize/MaizeSV/data/B73.annt.LS.noBND.npz   /Users/pmonnahan/Documents/Research/Maize/MaizeSV/scripts/accessory/b73_homologues_dict.txt
+W22	/Users/pmonnahan/Documents/Research/Maize/MaizeSV/data/W22.annt.LS.noBND.npz   /Users/pmonnahan/Documents/Research/Maize/MaizeSV/scripts/accessory/w22_homologues_dict.txt
+PHB47	/Users/pmonnahan/Documents/Research/Maize/MaizeSV/data/PHB47.annt.LS.noBND.npz    /Users/pmonnahan/Documents/Research/Maize/MaizeSV/scripts/accessory/phb47_homologues_dict.txt
+PH207	/Users/pmonnahan/Documents/Research/Maize/MaizeSV/data/PH207.annt.LS.noBND.npz    /Users/pmonnahan/Documents/Research/Maize/MaizeSV/scripts/accessory/ph207_homologues_dict.txt
+Mo17   /Users/pmonnahan/Documents/Research/Maize/MaizeSV/data/Mo17.annt.LS.noBND.npz    /Users/pmonnahan/Documents/Research/Maize/MaizeSV/scripts/accessory/Mo17_homologues_dict.txt
