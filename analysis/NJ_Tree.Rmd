@@ -177,9 +177,10 @@ tipColors = function(query, filter_df){
 
 
 ```{r}
-vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/Merged.5.50k.flt.vcf.gz")
+# vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/Merged.5.50k.flt.vcf.gz")
+vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/WiDiv_NJ_Tree_9-2019.vcf.gz")
 Vcf = vcfR2genlight(vcf)
-pops = read.table("~/Documents/Research/Maize/Maize_genotype_groups2.txt", head = T)
+pops = read.table("~/Documents/Research/Maize/Maize_genotype_groups_PM.txt", head = T)
 
 locNames(Vcf) <- paste(vcf@fix[,1],vcf@fix[,2],sep="_")
 

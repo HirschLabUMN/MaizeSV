@@ -54,11 +54,10 @@ for samp,fqs in samps.items():
             if fq[0].isdigit():
                 lib = "a"
 
-            FQs = [s for s in os.listdir(args.f) if any([x in s for x in [fq + "_1", fq + "_2"]])  and "sing" not in s] # find absolute path to R1 and R2 fastqs based on the fastq name while excluding the singles file that 'sickle' would have produces
+            FQs = [s for s in os.listdir(args.f) if any([x in s for x in [fq + "_1_R1", fq + "_1_R2"]])  and "sing" not in s] # find absolute path to R1 and R2 fastqs based on the fastq name while excluding the singles file that 'sickle' would have produces
             FQs.sort() # This should sort the fastqs so that read 1 file appears before read 2
             
             # Check to make sure that the search for fastq files corresponding the name specified by 'fq' uniquely identifies a single paire of forward and reverse read files
-            
             if len(FQs) < 2: 
                 print("Error: Did not find fastq files for " + fq)  
             elif len(FQs) > 2: 

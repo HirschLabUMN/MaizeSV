@@ -1,3 +1,17 @@
+#!/usr/bin/env python
+"""
+Author: Patrick Monnahan
+Purpose: This script generates commands for merging files with sambamba.  These commands can be executed in parallel using GNU parallel or a task array.  Be sure to use the same Sample_Fastq_Key (-s) and output_directory (-o) as was used with Generate_SpeedSeq_commands.py
+ Takes the following arguments:
+    -s :  REQUIRED: Space-delimited file to key that links fastq files to sample names. fastq file names can be partial, but must be complete enough to uniquely identify the fastq file. One sample per line. Format: Sample_name fastq1_prefix fastq2_prefix fastq3_prefix')
+    -o :  REQUIRED: Full path to output directory in which the MERGED bam files will be written
+    -r :  REQUIRED: Space-delimited file to key that links reference fasta path to reference names to be used in BAM naming. Format: Reference_name Reference_path'
+    -c :  Number_of_cores
+    -s :  path to the speedseq directory
+"""
+
+
+
 import allel
 import subprocess
 import argparse
@@ -8,6 +22,7 @@ import pdb
 #requires bgzip
 
 def padBedFile(bed_file, gene_buff):
+    '''This function creates a new temporary bed file that has the original gene boundaries plus additional entries for the up and downstream regions, which are determined by a buffer specified by the -b flag'''
     new_bed = bed_file.replace("bed","tmp.bed")
     new_file = open(new_bed, 'w')
     # Create a SEPARATE bed entry for <gene_buff> distance upstream and downstream of gene for annotating VCF.
@@ -16,15 +31,16 @@ def padBedFile(bed_file, gene_buff):
             line = line.split()
             start = int(line[1])
             end = int(line[2])
-            if int(line[1]) - gene_buff < 0: new_start = 0
+            if int(line[1]) - gene_buff < 0: new_start = 0 #avoid creating a negative coordinate at beginning of chromosome
             else: new_start = int(line[1]) - gene_buff
             new_end = int(line[2]) + gene_buff
 
-
+            #Format string entries corresponding to upstream, gene body, and downstream regions.  
             upstream = f"{line[0]}\t{new_start}\t{start}\t{line[3]}-us-{int(gene_buff / 1000)}kb\n"
             gene = f"{line[0]}\t{start}\t{end}\t{line[3]}-gene-{int(gene_buff / 1000)}kb\n"
             downstream = f"{line[0]}\t{end}\t{new_end}\t{line[3]}-ds-{int(gene_buff / 1000)}kb\n"
 
+            #Write entries to file
             new_file.write(gene)
             new_file.write(upstream)
             new_file.write(downstream)
@@ -32,16 +48,14 @@ def padBedFile(bed_file, gene_buff):
     return(new_bed)
 
 
-
-
 def annotateVCF(merged_vcf, bed_annt_file, outfile, annt_dist, SURVIVOR_ant_path):
+    '''Use SURVIVOR_ant software to annotate SV variants with entries created in padBedFile'''
+    cmd1 = f"{SURVIVOR_ant_path} -b {bed_annt_file} -i {merged_vcf} --anno_distance {annt_dist} -o {merged_vcf.replace('.vcf', '.tmp.vcf')}" #SURVIVOR_ant command produces temporary output whose header is correctly formatted for subsequent steps via cmd2
+    cmd2 = f"""awk '/^##INFO=<ID=SVTYPE/ {{ printf("##INFO=<ID=overlapped_Annotations,Number=.,Type=String,Description=\\"Overlapped Annotations\\">\\n");}} {{print;}}' {merged_vcf.replace('.vcf', '.tmp.vcf')} | gzip > {outfile}; rm {merged_vcf.replace('.vcf', '.tmp.vcf')}""" #Command to fix header
 
-    cmd1 = f"{SURVIVOR_ant_path} -b {bed_annt_file} -i {merged_vcf} --anno_distance {annt_dist} -o {merged_vcf.replace('.vcf', '.tmp.vcf')}"
-    cmd2 = f"""awk '/^##INFO=<ID=SVTYPE/ {{ printf("##INFO=<ID=overlapped_Annotations,Number=.,Type=String,Description=\\"Overlapped Annotations\\">\\n");}} {{print;}}' {merged_vcf.replace('.vcf', '.tmp.vcf')} | gzip > {outfile}; rm {merged_vcf.replace('.vcf', '.tmp.vcf')}"""
-
-    pp1 = subprocess.Popen(cmd1, shell = True)
-    out1, err1 = pp1.communicate()
-    pp2 = subprocess.Popen(cmd2, shell = True)
+    pp1 = subprocess.Popen(cmd1, shell = True) #Run cmd1
+    out1, err1 = pp1.communicate() #Wait for it to finish
+    pp2 = subprocess.Popen(cmd2, shell = True) #Run cmd2
     out2, err2 = pp2.communicate()
     return([[out1, err1], [out2, err2]])
 
@@ -86,37 +100,26 @@ def pickleVCF(annt_vcf, template_vcf = -9, vcftools_perl_folder = "/usr/local/bi
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-f', type=str, metavar='vcf_info_file', required=True, help='tab delimited file with each line containing (tab-delimited) all of the vcfs for a reference genome that you wish to be merged.  The first, second, and third columns are reserved for: 1.) a reference ID in common for all vcfs on the line, 2.) the full path to the reference fasta, and 3.) a bed file with gene locations.  Each following column should be a comma-delimited (no spaces) list that has the vcf path followed by an identifier for that vcf (e.g. GS.L')
+    parser = argparse.ArgumentParser(description='This script prepares the data contained in multiple SV VCFs (corresponding to the same samples called against different reference genomes) for subsequent analysis with SVMap.py (which links the SVs across reference genomes).')
+    parser.add_argument('-f', type=str, metavar='vcf_info_file', required=True, help='tab delimited file with each line containing 1.) the reference genotype ID (e.g. B73; used for naming), 2.) a bed file with gene locations ONLY and 3.) the vcf file.')
     parser.add_argument('-o', type=str, metavar='output_directory', required=True, help='Output Directory')
     parser.add_argument('-s', type=str, metavar='output_suffix', required=True, help='Output Suffix')
-    parser.add_argument('-mp', type=str, metavar='mergeSVcallers_path', required=False, default='/Users/pmonnahan/Documents/Research/Maize/MaizeSV/software/mergeSVcallers/mergeSVcallers')
     parser.add_argument('-sp', type=str, metavar='SURVIVOR_ant_path', required=False, default='/Users/pmonnahan/Documents/Research/Maize/MaizeSV/software/SURVIVOR_ant/bin/survivor_ant-core-0.1.0/survivor_ant')
-    # parser.add_argument('-r', type=str, metavar='reference_fasta_path_file', required=True, help="file containing the reference genome fasta path for each set of VCFs that you are looking to merge.  Must be in same order as -f")
-    parser.add_argument('-ad', type=str, metavar='annotation_distance', required=False, default='2000', help = "distance from SV to buffer for looking for gene overlap when annotating merged vcf with gene info")
-    parser.add_argument('-md', type=str, metavar='Merge_bp_distance', required=False, default='100', help = "Merge SVs with both breakpoints N BP away")
-    parser.add_argument('-mr', type=str, metavar='Merge_recip_overlap', required=False, default='0', help = "Reciprocal overlap also required for merging")
+    parser.add_argument('-ad', type=str, metavar='annotation_distance', required=False, default='0', help = "distance from SV to buffer for looking for gene overlap when annotating merged vcf with gene info; this is accomodated by -b, which provides more explicit info regarding the location where the overlap is found, so this can be left at 0 (default)")
     parser.add_argument('-b', type=int, metavar='buffer', required=False, default=2000, help = "Adds this amount to either side of gene boundary for annotation of variants")
-    # parser.add_argument('-r', action='store_true', help='restrictTo_mainChroms')
     args = parser.parse_args()
 
-    # print("BE SURE THAT LUMPY RESULTS HAVE BEEN FILTERED TO ONLY KEEP THE 'RETAINED' VARIANTS")
-
+    #Loop over VCF files, annotate variants with geneIDs, and pickle the VCFs for fast retrieval in SVMap.py
     VCF_dict = {}
     with open(args.f, 'r') as vcf_file:
-        for line in vcf_file:
+        for i, line in enumerate(vcf_file):
             line = line.split()
-            ref_id = line[0]
-            VCF_dict[ref_id] = [line[1]] #holds the fasta path for this reference
-            VCF_dict[ref_id].append(line[2]) #holds the bed annotation
-            for entry in line[3:]:
-                vcf, ID = entry.split(",")
-                VCF_dict[ref_id].append([vcf, ID])
-
-    for i, ref in enumerate(VCF_dict.keys()):
-        vcf = VCF_dict[ref][2][0]
-        anntfile = f"{args.o}/{ref}.annt.{args.s}.gz"
-        bed_file = padBedFile(VCF_dict[ref][1], args.b)
-        annotateVCF(vcf, bed_file, anntfile, args.ad, args.sp) 
-        pickleVCF(anntfile, anntfile)
-        os.remove(bed_file)
+            ref = line[0]
+            bed_file = line[1]
+            vcf = line[2]
+            anntfile = f"{args.o}/{ref}.annt.{args.s}.gz"
+            padded_bed_file = padBedFile(bed_file, args.b)
+            annotateVCF(vcf, padded_bed_file, anntfile, args.ad, args.sp) 
+            if i==0: template_vcf = vcf #This is necessary for reordering sample names in the VCFs so that all are in same order across references.
+            pickleVCF(anntfile, template_vcf)
+            os.remove(padded_bed_file)
