@@ -438,6 +438,40 @@ To prepare the collection of gene-key files, use the script code/pickle_homologu
       -o output_directory
 See scripts/accessory/geneKey_fileList.txt for the list of gene-key files that were used.
 
+### SVMap
+
+This is the primary script that is used to cross-validate SV variants across
+reference genomes. Users should have run the necessary scripts to prepare the
+VCFs (output of annotate_pickle_vcfs.py) and gene-keys (output of
+pickle_homologue_dicts.py). The first output file (suffix: .results.txt)
+summarizes relavent info for each match, whereas the second output file
+(suffix: .samples.txt) contains the list of samples that were filtered and/or
+did not match across references for each match, which could be used for
+filtering sample genotypes when creating consensus calls across references. 
+
+    usage: SVMap.py [-h] -f npz_file -o output_directory [-s output_prefix]
+                [-gq genotype_quality_threshold] [-mi minimum_individuals]
+                [-d tmp_directory] \\
+    optional arguments:
+      -h, --help            show this help message and exit
+      -f npz_file           tab delimited file with 3 colums: 1.)key name used in
+                            homologue dictionary (e.g. B73, W22, PHB47, and PH207)
+                            2.) the npz file of the converted vcf (created with
+                            annotate_pickle_vcf.py), and 3.) the compressed
+                            dictionary containing homolog info (created by
+                            pickle_homologue_dicts.py)
+      -o output_directory   Directory to write the two output files
+      -s output_prefix
+      -gq genotype_quality_threshold
+                            Filter all genotypes below this threshold. Directly
+                            impacts matching and subsequently genotype distance
+                            calculations; Default = 0
+      -mi minimum_individuals
+                            minimum number of inidividuals (with sufficient
+                            genotype quality in both references) needed to
+                            calculate a distance between genotype matrices;
+                            Default = 0
+      -d tmp_directory
 
 ### Notes
 

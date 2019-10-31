@@ -1,6 +1,5 @@
-
 module load bcftools
-py27 #Activate python 2.7 virtualenv
+source activate py27 #Activate python 2.7 virtualenv
 
 
 set -ex
@@ -22,17 +21,21 @@ fi
 VCF="$1"
 
 gunzip $VCF || true
-~/software/vcftools-vcftools-cb8e254/src/perl/vcf-sort $VCF | bgzip > ${VCF%.vcf}.sort.vcf.gz
-tabix -p vcf ${VCF%.vcf}.sort.vcf.gz
-bcftools view -G ${VCF%.vcf}.sort.vcf.gz \
+~/software/vcftools-vcftools-cb8e254/src/perl/vcf-sort ${VCF%.vcf.gz}.vcf | bgzip > ${VCF%.vcf.gz}.sort.vcf.gz
+tabix -p vcf ${VCF%.vcf.gz}.sort.vcf.gz
+zcat ${VCF%.vcf.gz}.sort.vcf.gz \
+    | sed 's/GSCNCATEGORY,Number=1,Type=Integer/GSCNCATEGORY,Number=1,Type=String/' \
+    | bcftools view -G \
     | vawk --header '{for (i = 1; i <= 7; i++) printf("%s\t", $i); printf("SVTYPE=%s;POS=%s;SVLEN=%s;END=%s;CIPOS=-10,10;CIEND=-10,10;CIPOS95=0,0;CIEND95=0,0\n", I$GSCNCATEGORY,$2,I$GSELENGTH,I$END)}' \
     | sed '/CIPOS,Number/a ##INFO=<ID=CIPOS95,Number=2,Type=Integer,Description="Confidence interval (95%) around POS for imprecise variants">' \
     | sed '/CIEND,Number/a ##INFO=<ID=CIEND95,Number=2,Type=Integer,Description="Confidence interval (95%) around END for imprecise variants">' \
-    | sed 's/MIXED/DEL/g' > ${VCF%.vcf}.fmted.vcf
+    | sed 's/MIXED/DEL/g' > ${VCF%.vcf.gz}.fmted.vcf
 
-create_coordinates -i ${VCF%.vcf}.fmted.vcf -o ${VCF%.vcf}.fmted_coord.txt
+create_coordinates -i ${VCF%.vcf.gz}.fmted.vcf -o ${VCF%.vcf.gz}.fmted_coord.txt
 
-rm ${VCF%.vcf}.sort.vcf.gz
-rm ${VCF%.vcf}.sort.vcf.gz.tbi
+gzip ${VCF%.vcf.gz}.fmted.vcf
+gzip ${VCF%.vcf.gz}.vcf
+rm ${VCF%.vcf.gz}.sort.vcf.gz
+rm ${VCF%.vcf.gz}.sort.vcf.gz.tbi
 
 exit
