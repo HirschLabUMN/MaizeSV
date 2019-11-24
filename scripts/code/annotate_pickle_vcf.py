@@ -55,8 +55,8 @@ def padBedFile(bed_file, gene_buff):
 def annotateVCF(merged_vcf, bed_annt_file, outfile, annt_dist, SURVIVOR_ant_path):
     '''Use SURVIVOR_ant software to annotate SV variants with entries created in padBedFile'''
     cmd1 = f"{SURVIVOR_ant_path} -b {bed_annt_file} -i {merged_vcf} --anno_distance {annt_dist} -o {merged_vcf.replace('.vcf', '.tmp.vcf')}" #SURVIVOR_ant command produces temporary output whose header is correctly formatted for subsequent steps via cmd2
-    cmd2 = f"""awk '/^##INFO=<ID=SVTYPE/ {{ printf("##INFO=<ID=overlapped_Annotations,Number=.,Type=String,Description=\\"Overlapped Annotations\\">\\n");}} {{print;}}' {merged_vcf.replace('.vcf', '.tmp.vcf')} | gzip > {outfile}; rm {merged_vcf.replace('.vcf', '.tmp.vcf')}""" #Command to fix header
-
+    cmd2 = f"""awk '/^##INFO=<ID=SVTYPE/ {{ printf("##INFO=<ID=overlapped_Annotations,Number=.,Type=String,Description=\\"Overlapped Annotations\\">\\n");}} {{print;}}' {merged_vcf.replace('.vcf', '.tmp.vcf')} | awk '/^##FORMAT=<ID=GT,Number=1/ {{ printf("##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\\"Genotype quality\\">\\n");}} {{print;}}' | grep -v ID=LENGTH | gzip > {outfile}; rm {merged_vcf.replace('.vcf', '.tmp.vcf')}""" #Command to fix header
+    # pdb.set_trace()
     pp1 = subprocess.Popen(cmd1, shell = True) #Run cmd1
     out1, err1 = pp1.communicate() #Wait for it to finish
     pp2 = subprocess.Popen(cmd2, shell = True) #Run cmd2
@@ -125,9 +125,15 @@ if __name__ == "__main__":
             ref = line[0]
             bed_file = line[1]
             vcf = line[2]
+            if vcf.endswith("gz"):
+                cmd = f"gunzip {vcf}"
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                out1, err1 = p.communicate()
+                vcf = vcf.strip(".gz")
+
             anntfile = f"{args.o}/{ref}.annt.{args.s}.gz"
             padded_bed_file = padBedFile(bed_file, args.b)
             annotateVCF(vcf, padded_bed_file, anntfile, args.ad, args.sp) 
-            if i==0: template_vcf = vcf #This is necessary for reordering sample names in the VCFs so that all are in same order across references.
+            if i==0: template_vcf = anntfile #This is necessary for reordering sample names in the VCFs so that all are in same order across references.
             pickleVCF(anntfile, template_vcf, args.vp)
             os.remove(padded_bed_file)

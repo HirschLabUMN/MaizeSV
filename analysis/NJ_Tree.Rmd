@@ -13,7 +13,7 @@ output: html_notebook
   cat head.txt tmp.vcf.gz | vcf-sort | bgzip > Merged.50k.vcf.gz
   
    
-
+#Load neccessary modules and define functions
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(include = TRUE)
 library(vcfR)
@@ -175,33 +175,86 @@ tipColors = function(query, filter_df){
 
 ```
 
-
+#Load data
 ```{r}
 # vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/Merged.5.50k.flt.vcf.gz")
-vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/WiDiv_NJ_Tree_9-2019.vcf.gz")
+vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/VCFs/WiDiv_11-2019_50k_NJtree.flt.rcdHets.vcf.gz")
 Vcf = vcfR2genlight(vcf)
-pops = read.table("~/Documents/Research/Maize/Maize_genotype_groups_PM.txt", head = T)
+pops = read.table("~/Documents/Research/Maize/widiv/Maize_genotype_groups2.txt", head = T)
 
 locNames(Vcf) <- paste(vcf@fix[,1],vcf@fix[,2],sep="_")
 
-aa = as.data.frame(indNames(Vcf))
-aa %<>% dplyr::mutate(genotype = (indNames(Vcf))) %>% dplyr::select(genotype)
+pop(Vcf)<-substr(indNames(Vcf),1,3)
 
-aa = merge(aa, pops[,c("genotype","heterotic_group")], by = c("genotype"), all.x = T)
-aa %<>% dplyr::mutate(heterotic_group = case_when(is.na(.$heterotic_group) ~ "NoHG", TRUE ~ as.character(.$heterotic_group)))
-pop(Vcf)<-aa$heterotic_group
+#Generate color key for dupliciate fastqs (red) versus samples with just one fastq (black)
+dd = data.frame(Vcf$ind.names)
+dd %<>% mutate(ord = row_number(), xx = str_replace(str_replace(Vcf.ind.names, "GH17_", ""), "2:", "")) %>% mutate(V2 = str_split_fixed(xx, "_", 2)[,1]) %>% mutate(names = paste(V2, row_number(), sep = "-"))
+dd %<>% mutate(unique = case_when(!V2 %in% dd[duplicated(dd$V2),]$V2 ~ "black", V2 %in% dd[duplicated(dd$V2),]$V2 ~ "red"))
 
-# tt = stamppNeisD(Vcf, pop = F)
+names = read.csv("~/Documents/Research/Maize/MaizeSV/misc/name_key.csv", head = F)
+kk = merge(dd, names, by = "V2", all.x = T)
+kk %<>% mutate(V1 = as.character(V1)) %>% mutate(Nam = case_when(!is.na(V1) ~ V1, is.na(V1) ~ as.character(V2)))
+kk %<>% mutate(Names = paste(Nam, row_number(), sep = "-"))
+kk %<>% mutate(unique = case_when(!Nam %in% kk[duplicated(kk$Nam),]$Nam ~ "black", Nam %in% kk[duplicated(kk$Nam),]$Nam ~ "red"))
+kk %<>% arrange(ord)
+
+#Format Heterotic group info for coloring tree tips.
+grps = read.csv("~/Documents/Research/Maize/widiv/HetGroups.csv")
+grps %<>% mutate(Nam=Genotype)
+KK = merge(kk, grps, by="Nam", all.x=T)
+
+#Set colors
+cols=c("gray48","red","blue","pink4","green","darkolivegreen3","darkolivegreen4","gold","lightblue","turquoise4","wheat3","lightpink","saddlebrown")
+names=c(".","SSS","NSS","Flint","Iodent","Iodent/Midland","Midland","Popcorn", "Tropical", "Tropical/NSS", "Sweet Corn", "Semi Flint", "UK")
+Cols = data.frame(Cols = cols, Group = names)
+
+KK = merge(KK, Cols, by="Group", all.x=T)
+KK %<>% mutate(Cols = case_when(is.na(Cols) ~ "black", TRUE ~ as.character(Cols)))
+KK %<>% arrange(ord)
+```
+
+### Find samples with high missingness.  Passed a certain level, missingness will crash distance calculations.
+```{r}
+gt <- extract.gt(vcf, element = "GT", as.numeric=TRUE)
+colSums(is.na(gt))
+
+sum((gt$`IBB15` - gt$`r1049_FDPL190729869-1a_HTWF3DSXX_L3_B73v4`)^2, na.rm=T) / sum(!is.na((gt$`IBB15` - gt$`r1049_FDPL190729869-1a_HTWF3DSXX_L3_B73v4`)^2), na.rm=T) * 100
+sum((gt$`L-135` - gt$`r1022_FDPL190729849-1a_HTWF3DSXX_L2_B73v4`)^2, na.rm=T) / sum(!is.na((gt$`L-135` - gt$`r1022_FDPL190729849-1a_HTWF3DSXX_L2_B73v4`)^2), na.rm=T) * 100
+
+sum((gt$`L-135` - gt$`IBB15`)^2, na.rm=T) / sum(!is.na((gt$`L-135` - gt$`IBB15`)^2), na.rm=T) * 100
+sum((gt$`L-135` - gt$`r1049_FDPL190729869-1a_HTWF3DSXX_L3_B73v4`)^2, na.rm=T) / sum(!is.na((gt$`L-135` - gt$`r1049_FDPL190729869-1a_HTWF3DSXX_L3_B73v4`)^2), na.rm=T) * 100
+
+sum((gt$`r1022_FDPL190729849-1a_HTWF3DSXX_L2_B73v4` - gt$`IBB15`)^2, na.rm=T) / sum(!is.na((gt$`r1022_FDPL190729849-1a_HTWF3DSXX_L2_B73v4` - gt$`IBB15`)^2), na.rm=T) * 100
+sum((gt$`r1022_FDPL190729849-1a_HTWF3DSXX_L2_B73v4` - gt$`r1049_FDPL190729869-1a_HTWF3DSXX_L3_B73v4`)^2, na.rm=T) / sum(!is.na((gt$`r1022_FDPL190729849-1a_HTWF3DSXX_L2_B73v4` - gt$`r1049_FDPL190729869-1a_HTWF3DSXX_L3_B73v4`)^2), na.rm=T) * 100
+
+
+
+#Proportion heterozygous
+GT = extract.gt(vcf)
+hets = is.het(GT, na_is_false = F)
+Het = data.frame("prop_het"=colSums(hets, na.rm=T) / colSums(!is.na(hets)))
+Het %<>% rownames_to_column("sample")
+
+#Flag overly heterozygous samples
+flag.samps = Het %>% dplyr::filter(prop_het > 0.05)
+kk %<>% mutate(sample = Vcf.ind.names)
+flag.samps = merge(flag.samps, kk[,c("sample", "Names", "unique")], by = c("sample"))
+flagged_samps = flag.samps %>% dplyr::select(Names, prop_het, unique) %>% arrange(Names)
+
+#Identify heterozygous sites
+var.het = data.frame("prop_het_var"=rowSums(hets, na.rm=T) / rowSums(!is.na(hets)))
+var.het %<>% rownames_to_column("var")
+var.het %>% dplyr::filter(prop_het_var > 0.1) %>% nrow()
+
+
+
+
 ```
 
 ### Make NJ tree with duplicate fastq files labelled as red; use filenames as labels
 ```{r}
-names = read.csv("~/Documents/Research/Maize/MaizeSV/misc/name_key.csv", head = F)
-Vcf2 = Vcf
 
-dd = data.frame(Vcf$ind.names)
-dd %<>% mutate(ord = row_number(), xx = str_replace(str_replace(Vcf.ind.names, "GH17_", ""), "2:", "")) %>% mutate(V2 = str_split_fixed(xx, "_", 2)[,1]) %>% mutate(names = paste(V2, row_number(), sep = "-"))
-dd %<>% mutate(unique = case_when(!V2 %in% dd[duplicated(dd$V2),]$V2 ~ "black", V2 %in% dd[duplicated(dd$V2),]$V2 ~ "red"))
+Vcf2 = Vcf
 Vcf2$ind.names = dd$names
 tt2 = stamppNeisD(Vcf2, pop = F)
 
@@ -212,14 +265,7 @@ plot(nj(tt2),cex=0.3, type="fan", no.margin=T, label.offset = 0.01, tip.color = 
 
 ### Make NJ tree with duplicate fastq files w/ sample names as labels
 ```{r}
-kk = merge(dd, names, by = "V2", all.x = T)
 
-kk %<>% mutate(V1 = as.character(V1)) %>% mutate(Nam = case_when(!is.na(V1) ~ V1, is.na(V1) ~ as.character(V2)))
-
-kk %<>% mutate(Names = paste(Nam, row_number(), sep = "-"))
-
-kk %<>% mutate(unique = case_when(!Nam %in% kk[duplicated(kk$Nam),]$Nam ~ "black", Nam %in% kk[duplicated(kk$Nam),]$Nam ~ "red"))
-kk %<>% arrange(ord)
 Vcf3 = Vcf
 Vcf3$ind.names = kk$Names
 tt3 = stamppNeisD(Vcf3, pop = F)
@@ -233,27 +279,10 @@ heatmap.2(tt3, colsep=0, rowsep=0, trace = "none", cexRow = 0.08, margin = c(1,5
 ###Make NJ  tree labelled with heterotic group
 ```{r}
 
-grps = read.csv("~/Documents/Research/Maize/HetGroups.csv")
-grps %<>% mutate(Nam=Genotype)
-KK = merge(kk, grps, by="Nam", all.x=T)
-
-#Set colors
-cols=c("gray48","red","blue","pink4","green","darkolivegreen3","darkolivegreen4","gold","lightblue","turquoise4","wheat3","lightpink","saddlebrown")
-names=c(".","SSS","NSS","Flint","Iodent","Iodent/Midland","Midland","Popcorn", "Tropical", "Tropical/NSS", "Sweet Corn", "Semi Flint", "UK")
-Cols = data.frame(Cols = cols, Group = names)
-
-KK = merge(KK, Cols, by="Group", all.x=T)
-KK %<>% mutate(Cols = case_when(is.na(Cols) ~ "black", TRUE ~ as.character(Cols)))
-KK %<>% arrange(ord)
-
-
-
 plot(nj(tt3),cex=0.3, type="fan", no.margin=T, label.offset = 0.01, tip.color = KK$Cols)
 legend(0.15,0.2,legend = names, fill = cols, xpd=T, cex = 0.6)
 plot(nj(tt3),cex=0.3, type="radial", no.margin=T, label.offset = 0.01, tip.color = KK$Cols)
 legend(-0.34,0.72,legend = names, fill = cols, xpd=T, cex = 0.55)
-
-
 ```
 
 ###Make heatmaps

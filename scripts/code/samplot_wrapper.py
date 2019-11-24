@@ -1,4 +1,10 @@
+#!/usr/bin/env python
+"""This script generates commands for samplot.py, which will generate images of evidence supporting SV calls.  Currently, only variants from Lumpy and Genome STRiP are directly supported, although additional softwares can be easily accommodated.  There is substantial flexibility on the types of images that can be created, but currently it is set up to produce a single picture with the top 3 samples containing the variant and the bottom 3 matching the reference genotype.
+	Takes XXX arguments:
+	
+"""
 
+#Import modules
 import argparse
 import os
 from cyvcf2 import VCF
@@ -101,7 +107,7 @@ def makeComboPics(vcf_list, sample_list, outdir, bam_dir, samplot_directory, bcf
 
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description='Wrapper for samplot_vcf.sh')
+	parser = argparse.ArgumentParser(description='This script generates commands for samplot.py, which will generate images of evidence supporting SV calls.  Currently, only variants from Lumpy and Genome STRiP are directly supported, although additional softwares can be easily accommodated.  There is substantial flexibility on the types of images that can be created, but currently it is set up to produce a single picture with the top 3 samples containing the variant and the bottom 3 matching the reference genotype.')
 	parser.add_argument('-o', type=str, metavar='output_directory', required=True)
 	parser.add_argument('-B', type=str, metavar='bcftools_executable', default="/panfs/roc/msisoft/bcftools/1.6/bin/bcftools")
 	parser.add_argument('-S', type=str, metavar='samplot_directory', default="/home/hirschc1/pmonnaha/software/SV-plaudit/Samplot/src/")
@@ -117,19 +123,27 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
+	#Check that output directory exists
 	if os.path.exists(args.o):
 		if args.o.endswith("/") is False: args.o += "/"
 	else:
-		print(args.o, "does not exist")
+		os.mkdir(args.o)
+	#Check that you can find the directory containing the samplot code
 	if os.path.exists(args.S):
 		if args.S.endswith("/") is False: args.S += "/"
 	else:
-		print(args.S, "does not exist")
+		print("Unable to find the directory containing samplot code at:", args.S)
 
+	#Ensure proper specification of VCF files
+	assert (args.f != "-9" | args.v != "-9"), print("Must provide one (via -v) or more (via -f) VCF files containing SVs that you want to generate pictures from")
+	assert (args.f != "-9" & args.v == "-9") | (args.f == "-9" & args.v != "-9"), print("Do not set both -v and -f flags.  Use -v to generate images for a single VCF, and -f to generate images for a list of VCFs specified in a text file.")
+
+	#Parse VCF info to make pictures
 	if args.f != "-9":
 		vcf_list = getVCFlist(args.f, args.v, args.s)
-	else: vcf_list = [[args.s, args.v]]
+	elif args.v != "-9": vcf_list = [[args.s, args.v]]
 
+	#Main function to generate commands for generating pictures
 	if args.c == 'true':
 		makeComboPics(vcf_list, args.samps, args.o, args.b, args.S, args.B, args.N, args.n, args.r)
 

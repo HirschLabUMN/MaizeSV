@@ -455,7 +455,7 @@ filtering sample genotypes when creating consensus calls across references.
     optional arguments:
       -h, --help            show this help message and exit
       -f npz_file           tab delimited file with 3 colums: 1.)key name used in
-                            homologue dictionary (e.g. B73, W22, PHB47, and PH207)
+                            homologue dictionary (e.g. B73, W22, PHB47, and PH207)fe
                             2.) the npz file of the converted vcf (created with
                             annotate_pickle_vcf.py), and 3.) the compressed
                             dictionary containing homolog info (created by
