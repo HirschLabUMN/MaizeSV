@@ -1,17 +1,27 @@
 #!/bin/bash
-#PBS -l mem=3gb,nodes=1:ppn=1,walltime=12:00:00
+#PBS -l mem=3gb,nodes=1:ppn=1,walltime=24:00:00
 #PBS -A hirschc1
 #PBS -m abe
 #PBS -q mesabi
-#PBS -o /path/to/stdout/directory/cutadapt.o
-#PBS -e /path/to/stderr/directory/cutadapt.e
 
-# Load modules
-module load cutadapt
 
-# MODIFY THESE PATHS BELOW AS WELL AS -o AND -e paths above
-CMD_LIST="/path/to/file/containing/cutadapt_commands.txt"
-SUCCESS_LIST="/path/to/file/to/store/successful/cutadapt_runs.txt"
+# And the command list
+SCRIPT=`basename $0`
+if [ "$#" -ne 1 ]; then
+cat << EOF
+Usage: qsub ${SCRIPT} -F \"<Command_File>\"
+        This script is used to submit CutAdapt jobs, as listed in Command_File, as a task array.
+        
+EOF
+exit 1
+fi
+
+if ! [ -e "$1" ]; then
+    echo "Command file:$1 not found" >&2
+    exit 1
+fi
+
+CMD_LIST="$1"
 
 CMD="$(sed "${PBS_ARRAYID}q;d" ${CMD_LIST})"
 

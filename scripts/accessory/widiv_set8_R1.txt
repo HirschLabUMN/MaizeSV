@@ -1,0 +1,15 @@
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_2/H202SC19040813/raw_data/r1247/r1247_FDPL190725762-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_2/H202SC19040813/raw_data/r1272/r1272_FDPL190725766-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_2/H202SC19040813/raw_data/r1254/r1254_FDPL190725774-1a_HNNC5DSXX_L1_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_2/H202SC19040813/raw_data/r1254/r1254_FDPL190725774-1a_HTFK2DSXX_L1_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_3/H202SC19040813/raw_data/r1166/r1166_FDPL190725777-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_3/H202SC19040813/raw_data/r1110/r1110_FDPL190725770-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_3/H202SC19040813/raw_data/r1108/r1108_FDPL190725767-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_3/H202SC19040813/raw_data/r1183/r1183_FDPL190725772-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_4/H202SC19040813/raw_data/r1146/r1146_FDPL190725763-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_4/H202SC19040813/raw_data/r1479/r1479_FDPL190725768-1a_HTFK2DSXX_L1_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_4/H202SC19040813/raw_data/r1479/r1479_FDPL190725768-1a_HNNC5DSXX_L1_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_4/H202SC19040813/raw_data/r1140/r1140_FDPL190725773-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_1/H202SC19040813/raw_data/r1088/r1088_FDPL190725776-1a_HNJKJDSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_1/H202SC19040813/raw_data/r1080/r1080_FDPL190725779-1a_HNNC5DSXX_L2_1.fq.gz
+/home/hirschc1/shared/Archive/reads/WiDiv/set8/data_release_1/H202SC19040813/raw_data/r1090/r1090_FDPL190725771-1a_HNNC5DSXX_L1_1.fq.gz

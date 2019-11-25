@@ -15,6 +15,8 @@ import pipes
 import re
 import subprocess
 import argparse
+from pathlib import Path
+import shutil
 
 
 def get_read_paths(read_path_file, read_path_file2):
@@ -77,10 +79,17 @@ if __name__ == "__main__":
     parser.add_argument('-r', type=str, metavar='read_path_file', help='REQUIRED:  Full path to file with a list of read paths, one per line.  IMPORTANT: if paired reads are in separate files (i.e. not interleaved), create two files: one for forward reads and one for reverse reads. Pass the file containing paths to reverse read files to -r2')
     parser.add_argument('-r2', type=str, metavar='read_path_file2', default="-99", help='file containing paths to reverse read files')
     parser.add_argument('-o', type=str, metavar='output_directory', default='/panfs/roc/scratch/pmonnaha/Maize/Reads/Cutadapt/', help='Directory where the output of cutadapt and sickle will be written')
-    parser.add_argument('-c', type=str, metavar='path_to_cutadapt', default='~/.local/bin/cutadapt', help='path be latest version of cutadapt')
-    parser.add_argument('-s', type=str, metavar='path_to_sickle', default='/home/hirschc1/pmonnaha/software/sickle/sickle')
+    parser.add_argument('-c', type=str, metavar='path_to_cutadapt', default='~/.local/bin/cutadapt', help='path to latest version of cutadapt')
+    parser.add_argument('-s', type=str, metavar='path_to_sickle', default='~/software/sickle/sickle')
 
     args = parser.parse_args()
+
+    home = str(Path.home())
+    cutadapt_path = args.c.replace("~", home)
+    sickle_path = args.s.replace("~", home)
+
+    assert shutil.which(cutadapt_path), print("Did not find the CutAdapt executable at", cutadapt_path, ".  Be sure to provide exact path to executable file.")
+    assert shutil.which(sickle_path), print("Did not find the Sickle executable at", cutadapt_path, ".  Be sure to provide exact path to executable file.")
 
     if args.o.endswith("/") is False: # Add "/" to end of output path if it doesn't already exist so that path to output file is formatted correctly
         args.o += "/"
@@ -94,6 +103,6 @@ if __name__ == "__main__":
     r2_paths.sort()
 
     for i, fq in enumerate(r_paths): # Loop over files, build commands, and print to output.
-        cmd = build_command(fq, args.o, args.c, args.s, r2_paths[i])
+        cmd = build_command(fq, args.o, cutadapt_path, sickle_path, r2_paths[i])
         print(cmd)
 
