@@ -23,6 +23,20 @@ You will also need the following python modules, which can be installed with pip
     pip install --user --upgrade cutadapt
     pip install scikit-allel
     conda install -c bioconda svtools
+
+### FASTQ Pre-processing
+We use _cutadapt_ and _sickle_ to trim adapters and low quality bases, respectively, from reads.  Both of these softwares need to be downloaded and installed.  Although _cutadapt_ is available as load-able module on MSI, the correct version is not available.
+
+Install _cutadapt_ using pip
+
+    pip install --user --upgrade cutadapt
+
+Install _sickle_ by cloning the git repository and typing ‘make’ from within the directory
+
+    git clone <https://github.com/najoshi/sickle.git>
+    cd sickle
+    make
+
   
 ### _Speedseq_ <https://github.com/hall-lab/speedseq>
 Also installs _sambamba_ and _samblaster_.
@@ -128,18 +142,6 @@ You can use **fastqc.sh** in _/scripts/jobs/_ to run these commands in parallel 
 <br />
 
 ### Adapter and Quality Trimming — _CutAdapt_ and _Sickle_
-
-We use _cutadapt_ and _sickle_ to trim adapters and low quality bases, respectively, from reads.  Both of these softwares need to be downloaded and installed.  Although _cutadapt_ is available as load-able module on MSI, the correct version is not available.
-
-Install _cutadapt_ using pip
-
-    pip install --user --upgrade cutadapt
-
-Install _sickle_ by cloning the git repository and typing ‘make’ from within the directory
-
-    git clone <https://github.com/najoshi/sickle.git>
-    cd sickle
-    make
 
 To generate commands for cutadapt and sickle, use the script _./scripts/code/_**Generate_CutAdapt_commands.py**.  The use of this script differs depending on whether the paired-end fastq data is in an interleaved format (both forward and reverse reads are interleaved in a single file) versus in separate files.  For interleaved data, simply do:
 
