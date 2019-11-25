@@ -43,6 +43,7 @@ Speedseq is used to map fastq files to each reference genome (via the align subm
 
     module load cmake
     module load gcc
+    source /panfs/roc/msisoft/root/5.34.32/bin/thisroot.sh
     git clone --recursive https://github.com/hall-lab/speedseq
     cd speedseq
     make
@@ -51,26 +52,10 @@ If the installation fails, try installing just the necessary components of speed
 E.g. 
 
     make align
-from within the speedseq directory.
-
-### _RepeatMasker_
-
-    module load repeatmasker
-
-Both Genome STRiP and Lumpy (svtools classify) require a list of mobile element insertion sites, which are most easily produced via RepeatMasker <http://www.repeatmasker.org/>
-
-Implemented with ./scripts/jobs/RepeatMasker.sh.  
-
-### _Lumpy_ <https://github.com/arq5x/lumpy-sv>
-
-We implement Lumpy on a per-individual basis via the _speedseq_ 'sv' command
-
-For installing speedseq sv, do:
-
-    module load root
-    source /panfs/roc/msisoft/root/5.34.32/bin/thisroot.sh
     make sv
     make cnvnator
+    
+from within the speedseq directory.
 
 NOTE:  It is essential that you use this specific version of ROOT for both compiling 
 
@@ -83,7 +68,15 @@ under the #CNVnator heading.
 Next, add the virtual environment python path to to where it says “PYTHON=“.  For me, the python path looks like:
 
     home/hirschc1/pmonnaha/anaconda3/envs/py27/bin/python2.7
-    
+
+
+### _RepeatMasker_
+
+    module load repeatmasker
+
+Both Genome STRiP and Lumpy (svtools classify) require a list of mobile element insertion sites, which are most easily produced via RepeatMasker <http://www.repeatmasker.org/>
+
+Implemented with ./scripts/jobs/RepeatMasker.sh.  
 
 ## Fasta preparation
 
