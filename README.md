@@ -169,24 +169,6 @@ Run commands as a task array with script _./scripts/jobs/_**Cutadapt.sh**.  Ope
 
 We use _speedseq_ for mapping, position-sorting, and extraction of split and discordant paired reads.  Under the hood, _speedseq_ more efficiently parallelizes _bwa mem_ and pipes the output directly to _sambamba_ and _samblaster_.  _Sambamba_ is a sam/bam manipulation software with analogous functionality to _samtools_, like sorting, merging, etc., yet is much faster.  _Samblaster_ efficiently marks duplicate reads and simultaneously extracts discordant and split reads.
 
-Install _speedseq_ (also installs _sambamba_ and _samblaster,_ automatically) with:
-
-    module load cmake
-    git clone --recursive <https://github.com/hall-lab/speedseq>
-    cd speedseq
-    make
-
-If the installation fails, try installing just the necessary components of speedseq, which is align and sv.  Installation of speedseq is modular, so these components can be installed with individual calls to make.
-E.g. 
-
-    make align
-from within the speedseq directory.
-
-For installing _speedseq sv_, first do:
-    
-    module load root
-    source /panfs/roc/msisoft/root/6.06.06/bin/thisroot.sh
-
 Generate _speedseq_ commands with _./scripts/code/_**Generate_SpeedSeq_commands.py**
 
     python Generate_SpeedSeq_commands.py -f fastq_directory \
@@ -197,14 +179,17 @@ Generate _speedseq_ commands with _./scripts/code/_**Generate_SpeedSeq_commands
     -m number_of_Gb_memory \
     -s path_to_speedseq_directory > speedseq_command_file
 
-  
 Given the large number of nodes needed to complete all mapping commands, it is most efficient to use either the ‘large’ or ‘widest’ queues on mesabi.  To use the ‘widest’ queue, you must request special permission by emailing help@msi.umn.edu.  
 
 For the ‘large’ queue, the maximum number of nodes is 48 and the maximum time limit is 24 hrs.  Trials with _speedseq_  suggest ~8hrs is a reasonable expectation for a single mapping job.  Therefore, ~3 jobs per node ought to complete within the time limit, resulting in (48 nodes * 3 jobs/node) 144 total jobs per run in the large queue.  We can split the _speedseq_command_file_ into multiple files each containing 144 lines using: 
 
     split -l 144 speedseq_command_file -a 1 -d speedseq_commands_
 
-This will produce a number of files named _speedseq_commands_X_ where X will be replaced by a numerical index.  The job script ./scripts/jobs/ **Speedseq_large.sh,** implemented as a task array, can be used to submit a job to the ‘large’ queue for each of the subsetted command files.  Open **Speedseq_large.sh** and modify the paths where indicated.
+This will produce a number of files named _speedseq_commands_X_ where X will be replaced by a numerical index.  The job script ./scripts/jobs/ **Speedseq_large.sh,** implemented as a task array, can be used to submit a job to the ‘large’ queue for each of the subsetted command files.  Open **Speedseq_large.sh** and modify the paths where indicated.  Alternatively, jobs in the command file can be individually submitted as a task array using ./scripts/jobs/Speedseq.sh via
+
+    qsub -t XX-YY Speedseq.sh -F "<command_file>"
+
+where XX-YY specifies the numeric range (line numbers) of the command file that you wish to submit and *command_file* is the file containing the previously generated commands.
 <br />
 
 #### Merging BAMs — _sambamba_
