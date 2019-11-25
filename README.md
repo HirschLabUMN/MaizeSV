@@ -39,7 +39,7 @@ Install _sickle_ by cloning the git repository and typing ‘make’ from within
 
   
 ### _Speedseq_ <https://github.com/hall-lab/speedseq>
-Also installs _sambamba_ and _samblaster_.
+Speedseq is used to map fastq files to each reference genome (via the align submodule) and is also used to call SVs with Lumpy (via the sv submodule).  This process will also install _sambamba_ and _samblaster_, which are necessary for mapping and merging of sequence data.
 
     module load cmake
     git clone --recursive <https://github.com/hall-lab/speedseq>
@@ -51,11 +51,6 @@ E.g.
 
     make align
 from within the speedseq directory.
-
-For installing _speedseq sv_, first do:
-    
-    module load root
-    source /panfs/roc/msisoft/root/6.06.06/bin/thisroot.sh
 
 ### _RepeatMasker_
 
