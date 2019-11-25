@@ -7,13 +7,19 @@ Structural variant discovery using whole genome short-read sequence data.  Reads
 ## Requirements
 
 ### Python
+
+All of the scripts in the ./scripts/code/ directory use python 3.6.  Load this on the cluster by:
+
+    module load python/3.6.3
+
 Python 2.7 is required for SVtools (a component of the Lumpy pipeline)
 
 To create a virtual environment with anaconda using python 2.7, do:
 
+    module load anaconda/1.7.0 
     conda create -n py27 python=2.7 anaconda
 
-Activate this environment prior to using any SVtools or other py27-dependent softwares with:
+Activate this environment prior to using any _SVtools_ or other py27-dependent softwares with:
 
     source activate py27
 
@@ -23,6 +29,7 @@ You will also need the following python modules, which can be installed with pip
     pip install --user --upgrade cutadapt
     pip install scikit-allel
     conda install -c bioconda svtools
+
 
 ### FASTQ Pre-processing
 We use _cutadapt_ and _sickle_ to trim adapters and low quality bases, respectively, from reads.  Both of these softwares need to be downloaded and installed.  Although _cutadapt_ is available as load-able module on MSI, the correct version is not available.
@@ -46,26 +53,22 @@ Speedseq is used to map fastq files to each reference genome (via the align subm
     source /panfs/roc/msisoft/root/5.34.32/bin/thisroot.sh
     git clone --recursive https://github.com/hall-lab/speedseq
     cd speedseq
-    make
 
-If the installation fails, try installing just the necessary components of speedseq, which is align and sv.  Installation of speedseq is modular, so these components can be installed with individual calls to make.
-E.g. 
+Only the align, sv, and cnvnator modules are necessary for mapping and calling SVs, and these can be compiled individually via the following commands.
 
     make align
     make sv
     make cnvnator
-    
-from within the speedseq directory.
 
-NOTE:  It is essential that you use this specific version of ROOT for both compiling 
+from within the speedseq directory.
 
 Once the installations are complete, you must modify the file ./speedseq/bin/speedseq.config in a couple of ways.  First add the line:
 
     source /panfs/roc/msisoft/root/5.34.32/bin/thisroot.sh
 
-under the #CNVnator heading.
+under the #CNVnator heading.  NOTE:  It is essential that you use this specific version of ROOT for both compiling and subsequent running of speedseq sv
 
-Next, add the virtual environment python path to to where it says “PYTHON=“.  For me, the python path looks like:
+Next, check that the virtual environment python path that you set up earlier is found where it says “PYTHON=“ in the speedseq.config file.  For me, the python path looks like:
 
     home/hirschc1/pmonnaha/anaconda3/envs/py27/bin/python2.7
 
@@ -127,7 +130,7 @@ After removing extraneous scaffolds, reference fastas need to be indexed using _
 To generate _fastqc_ commands:
 
     find <fastqdir> -name "*fastq*" -o -name "*fq*" -print | xargs -I {} \
-    echo "fastqc --noextract -t number_of_threads -o outdir" {} > command_file
+    echo "fastqc --noextract -t <number_of_threads> -o <outdir>" {} > <command_file>
   
 You can use **fastqc.sh** in _/scripts/jobs/_ to run these commands in parallel via a task array.  If you are unfamiliar with the different options for parallelizing job submission, see the discussion below in **Notes**.  You will also need to open **fastqc.sh** and modify paths where indicated.
 <br />
@@ -158,19 +161,29 @@ Run commands as a task array with script _./scripts/jobs/_**Cutadapt.sh**.  Ope
 
 ## Mapping Fastq Files
 
+Before proceeding, I will discuss two accessory files that are of critical importance in several subsequent steps: the *sample_fastq_key* and the *reference_path_file*.  These can be found in ./scripts/accessory/sample_fastq_key.txt and ./scripts/accessory/reference_paths.txt, respectively.  The first file contains the sample names in the first column, and then the fastq file prefixes associated with the sample names in (tab-delimited) subsequent columns.  For example:
+
+    A322    GH17_1001_DDPL02023_HT2FJCCXY_L1    GH17_1001_DDPL02023_HTLWWCCXY_L1    r1001_FDPL190729834-1a_HTWF3DSXX_L1 
+
+indicates that the A322 has 3 sets of fastq files (one file for forward reads and one file for reverse reads per set).  These fastq prefixes should be directly derived from the fastq filenames that are in the raw fastq directory, such that appending '\_1.fq.gz' and '\_2.fq.gz' to the prefix will specify the forward and reverse read filenames, respectively.  Any time that new fastq files are received, this file will need to be updated
+
+The *reference_path_file* is much simpler and will only need to be updated once for a new user.  It will also need to be updated if a new, additional reference genome is used for mapping, but this is not likely to occur.  There are 3 tab-delimited columns in this file.  The first column contains the reference genome name that is used for labelling throughout the pipeline (e.g. B73v4, PH207, PHB47, Mo17, and W22v12).  The second column contains the path to the reference fasta files (including only chromosomes 1-10).  The third column contains the path to the bed files that contain non-genic regions to be excluded.  Creating these bed files is explained below under *SV Discovery*; however, it will likely not be necessary to remake these files.  You should be able to use the NonGenic.bed files in ./scripts/accessory/, as long as you change the paths in the *reference_path_file* to specify where these bed files are located for you.
+
 #### Alignment - _Speedseq_
 
 We use _speedseq_ for mapping, position-sorting, and extraction of split and discordant paired reads.  Under the hood, _speedseq_ more efficiently parallelizes _bwa mem_ and pipes the output directly to _sambamba_ and _samblaster_.  _Sambamba_ is a sam/bam manipulation software with analogous functionality to _samtools_, like sorting, merging, etc., yet is much faster.  _Samblaster_ efficiently marks duplicate reads and simultaneously extracts discordant and split reads.
 
 Generate _speedseq_ commands with _./scripts/code/_**Generate_SpeedSeq_commands.py**
 
-    python Generate_SpeedSeq_commands.py -f fastq_directory \
-    -k Sample_fastq_key  \
+    python Generate_SpeedSeqAlign_commands.py -f fastq_directory \
+    -k sample_fastq_key  \
     -o output_directory \
     -r reference_path_file \
     -c number_of_cores \
     -m number_of_Gb_memory \
     -s path_to_speedseq_directory > speedseq_command_file
+
+From extensive experimentation, I have found that using '-c 18 -m 30', is a good sweet-spot to prevent jobs from exceeding the max memory on a node (and thus failing).  
 
 Given the large number of nodes needed to complete all mapping commands, it is most efficient to use either the ‘large’ or ‘widest’ queues on mesabi.  To use the ‘widest’ queue, you must request special permission by emailing help@msi.umn.edu.  
 
@@ -189,11 +202,11 @@ where XX-YY specifies the numeric range (line numbers) of the command file that 
 
 The script  **Generate_MergeBAMs_commands.py**  in _./scripts/code/_ can be used to generate commands to merge bams with _sambamba:_
 
-    python Generate_MergeBAMs_commands.py -k _sample_fastq_key_  \
-      -b _bam_directory_
-      -o _output_directory_ \
-      -r _reference_path_file_ \
-      -c _number_of_cores_  > _sambamba_command_file_
+    python Generate_MergeBAMs_commands.py -k <sample_fastq_key>  \
+      -b <bam_directory>
+      -o <output_directory> \
+      -r <reference_path_file> \
+      -c <number_of_cores>  > <sambamba_command_file>
 
 Run _sambamba_  commands as task array implemented in ./scripts/jobs/ **Sambamba_MergeBAMs.sh**.  Be sure to open **Sambamba_MergeBAMs.sh** __ and modify paths where necessary.  ALSO, be sure to modify the ‘ppn’ field to reflect the number of cores specified with **Generate_MergeBAMs_commands.py** and also adjust the ‘mem’ field appropriately. 
 
@@ -201,6 +214,8 @@ Run _sambamba_  commands as task array implemented in ./scripts/jobs/ **Sambamb
 ## SV Discovery
 
 The end goal for each of the softwares is to produce a multi-sample VCF for each of the reference assemblies that were mapped to.  We restrict each program to perform SV discovery within gene regions to avoid the massive number of spurious calls that would result from the high TE content outside of genic regions.
+
+NOTE: The following bed files have already been created for a buffer size of 2kb, which can be found in ./scripts/accessories.  You only need to run the following scripts if you desire to use a different gff file or buffer size.
 
 To create the bed files that will contain the non-genic regions to be excluded for each reference, use the script ./scripts/code/make_nongenic_bed.py:
 

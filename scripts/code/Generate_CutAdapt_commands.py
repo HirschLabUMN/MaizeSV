@@ -17,6 +17,7 @@ import subprocess
 import argparse
 from pathlib import Path
 import shutil
+import sys
 
 
 def get_read_paths(read_path_file, read_path_file2):
@@ -83,6 +84,9 @@ if __name__ == "__main__":
     parser.add_argument('-s', type=str, metavar='path_to_sickle', default='~/software/sickle/sickle')
 
     args = parser.parse_args()
+
+    #check python version
+    assert sys.version_info[0] != 2, print("This script requires python3.  Do 'module load python/3.6.3'")
 
     home = str(Path.home())
     cutadapt_path = args.c.replace("~", home)

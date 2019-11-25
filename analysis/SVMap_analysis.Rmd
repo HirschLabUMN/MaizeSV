@@ -4,7 +4,7 @@ author: "Patrick Monnahan"
 date: "8/22/2019"
 output: html_document
 ---
-
+#Loading necessary packages & functions and load/format data
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
@@ -17,12 +17,20 @@ library(dplyr)
 library(stringr)
 library(data.table)
 library(magrittr)
+library(StAMPP)
 library(wrapr)
+library(vcfR)
+library(adegenet)
+library(adegraphics)
+library(pegas)
+library(StAMPP)
+library(lattice)
+library(gplots)
+library(ape)
 library(foreach)
 library(purrr)
 library(wesanderson)
 library(combinat)
-
 
 mutate=dplyr::mutate
 select=dplyr::select
@@ -30,28 +38,92 @@ filter=dplyr::filter
 summarize=dplyr::summarise
 distinct=dplyr::distinct
 
-sv = read.table("~/Documents/Research/Maize/MaizeSV/data/SVmap.gq10.mi0.results.txt", head = T)
-# sv50 = read.table("~/Documents/Research/Maize/MaizeSV/data/SVmap_E3_results_lumpy_gq50b.txt", head = T)
-# sv30 = read.table("~/Documents/Research/Maize/MaizeSV/data/SVmap_E3_results_lumpy_gq30b.txt", head = T)
-# 
-# sv50['gq']="50"
+#Adds alt_refs one at a time and records the number of matched variants for curr_ref
+addrefs = function(dat, curr_ref, alt_refs){
+  dat %<>% mutate(altRef = case_when(alt_ref=="PHB47" ~ "H", TRUE ~ str_sub(alt_ref, 1, 1)), Ref = case_when(ref=="PHB47" ~ "H", TRUE ~ str_sub(ref, 1, 1))) %>% filter(Ref == curr_ref) 
+  matches = data.frame(ref = as.character(), track = as.character(), altrefs = as.character(), matches = as.numeric())
+  
+  for(i in 1:length(alt_refs)){
+    include = alt_refs[1:i]
+    nmatches = dat %>% filter(altRef %in% include) %>% distinct(VarID) %>% nrow()
+    matches = rbind(matches, data.frame(ref = curr_ref, track = paste(alt_refs, collapse = ""), altrefs = paste(alt_refs[1:i], collapse = ""), matches = nmatches))
+
+  }
+  return(matches)
+}
+
+num1match = function(dat, leave_out){
+  dat %<>% filter(!ref %in% leave_out & !alt_ref %in% leave_out) %>% mutate(ref = as.character(ref), alt_ref = as.character(alt_ref))
+  refs = dat %>% distinct(ref)
+  Sdat = tibble(VarID = as.character(), AltID = as.character())
+  for(i in 1:nrow(refs)){
+    sdat = dat %>% filter(ref == as.character(refs[i,])) %>% filter(!(AltID %in% Sdat$VarID)) %>% distinct(ref, alt_ref, VarID, AltID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% filter(match==1) %>% distinct(VarID)
+    Sdat = rbind(Sdat, sdat)
+    # print(paste(refs[i,],sdat %>% distinct(VarID) %>% nrow()))
+  }
+  return(Sdat %>% distinct(VarID) %>% nrow())
+}
+
+#Function to create a plot for the difference between matched and unmatched variants in the joint SNP/SV frequency distribution.
+DensityDiffPlot = function(df){
+  # Adapted from https://stackoverflow.com/questions/28521145/r-calculate-and-plot-difference-between-two-density-countours
+  # Calculate the common x and y range SV and SNP frequency
+  xrng = range(c(df$sv_freq), na.rm=T)
+  yrng = range(c(df$snp_freq))
+  # Calculate the 2d density estimate over the common range
+  d1 = df %>% filter(matched=="yes") %.>% kde2d(.$sv_freq, .$snp_freq, lims=c(xrng, yrng), n=200)
+  d2 = df %>% filter(matched=="no" & !is.na(sv_freq)) %.>% kde2d(.$sv_freq, .$snp_freq, lims=c(xrng, yrng), n=200)
+  # Confirm that the grid points for each density estimate are identical
+  identical(d1$x, d2$x) # TRUE
+  identical(d1$y, d2$y) # TRUE
+  # Calculate the difference between the 2d density estimates
+  diff12 = d1 
+  diff12$z = d2$z - d1$z
+  ## Melt data into long format
+  # First, add row and column names (x and y grid values) to the z-value matrix
+  rownames(diff12$z) = diff12$x
+  colnames(diff12$z) = diff12$y
+  # Now melt it to long format
+  diff12.m = melt(diff12$z, id.var=rownames(diff12))
+  names(diff12.m) = c("SV_freq","Snp_freq","z")
+  # Plot difference between matched and unmatched density
+  plt = ggplot(diff12.m, aes(SV_freq, Snp_freq, z=z, fill=z)) +
+    geom_tile() + stat_contour(aes(colour=..level..), binwidth=0.001) + scale_fill_gradient2(low="red",mid="white", high="blue", midpoint=0) + scale_colour_gradient2(low=muted("red"), mid="white", high=muted("blue"), midpoint=0) + coord_cartesian(xlim=xrng, ylim=yrng) + guides(colour=FALSE)
+  return(plt)
+}
+
+#Gene key info for each reference.
+homs = read.table("~/Documents/Research/Maize/MaizeSV/docs/Supplemental/homologs.txt", head = T)
+
+#Gene locations for all references
+beds = read.table("~/Documents/Research/Maize/MaizeSV/docs/Supplemental/AllRefs_Genes.bed", head = T)
+```
+
+##Load and filter main SVMap results file
+```{r}
+#Unformatted output of SVMap.py 
+SVMap_results_file = "~/Documents/Research/Maize/MaizeSV/data/SVmap.gq10.mi0.results.txt"
+
+#Load data
+sv = read.table(SVMap_results_file, head = T)
 sv['gq']="10"
-# sv30['gq'] = "30"
-# 
-# sv = rbind(sv50, sv10)
-# sv = rbind(sv, sv30)
 
-min_gq = 10
+#Set fiilter params
+min_gq = 10 #Minimum GQ that reference genotypes must have for considering a match
+max_dist = 0.25 #Maximum proportion of disagreeing genotype calls that are allowed for matches
+min_genotypes = 10 #Minimum number of genotyped samples that pass quality criteria in both variants
+size_mag = 1 #Orders of magnitude that the size difference between matches is allowed to exceed.
 
+#Labelling of variants and matches
 sv %<>% mutate(VarID = paste(ref, varID, sep = "-"), AltID = paste(alt_ref, altID, sep = "-"), size_diff = (length - alt_len)^2 / mean(c(length, alt_len))) %>% group_by(VarID, AltID) %>% mutate(MatchID = paste(min(VarID, AltID), max(VarID, AltID), sep = "+")) %>% ungroup()
 
-#Need to implement filter to retain only 1:1 best matches across a pair of references.  Currently, two variants in the current reference, that match a single variant in the alt_ref will be retained, whereas we are filtering for when a single variant in the current reference matches multiple in the alt_ref
-
 #Only retain variant matches where reference genotype matches reference genome and alternative genotype is not missing or het.
-f.hasgeno = sv %>% filter(!(gt_ref_2ref == 0 & gt_alt_2ref %in% c(0,2) & svtype != "INV" & gq == "10")) %>% distinct(MatchID)
+f.hasgeno = sv %>% filter(!(gt_ref_2ref == 0 & gt_alt_2ref %in% c(0,2) & svtype != "INV")) %>% distinct(MatchID)
 
+#One-to-one homolog filter
 f.one2one = sv %>% filter(num_homs!=1) %>% distinct(MatchID)
 
+#Raw match filter
 f.hasmatch = sv %>% filter(alt_ref =="none") %>% distinct(MatchID)
 
 #Only keep if all genotypes are sufficient quality for ref and alt short-read data
@@ -69,61 +141,304 @@ f.typematch.strict = sv %>% filter(!((gt_ref_2ref == gt_alt_2ref & gt_ref_2alt =
 
 f.typematch = sv %>% filter(svtype != "MEI" | alt_type != "MEI") %>% filter(!((gt_ref_2ref == gt_alt_2ref & as.character(svtype) == as.character(alt_type)) | (gt_ref_2ref != gt_alt_2ref & as.character(svtype) != as.character(alt_type)))) %>% distinct(MatchID)
 
+#Filter for genotype concordance
 # 1 is completely opposite genos,  0 is perfect match
-max_dist = 0.25
-min_genotypes = 10
 f.sampgenos = sv %>% filter((prop_dist_filt > max_dist) | num_genos < min_genotypes) %>% distinct(MatchID)
 
 #Filter matches where size difference is > 2 orders of magnitude.
-f.sizediff = sv %>% filter(log(size_diff, 10) > 2) %>% distinct(MatchID)
+f.sizediff = sv %>% filter(log(size_diff, 10) > size_mag) %>% distinct(MatchID)
 
+#Add all desired filters to be applied to raw dataset
 filters = do.call('rbind', list(f.hasgeno, f.hasmatch, f.gqual.strict, f.refgenos.strict, f.sampgenos, f.one2one, f.typematch, f.sizediff)) %>% distinct(MatchID)
 
+#Perform first round of filtering
 SV = sv %>% filter(!(MatchID %in% filters$MatchID))
 
-#find recip best matches
+#find reciprocal best matches following first round of filtering
 f.bestmatch = SV %>% group_by(ref, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% group_by(ref, alt_ref, altID) %>% slice(which.min(prop_dist_filt)) %>% distinct(MatchID)
 
+#Perform second round of filterinig
 SV %<>% filter(MatchID %in% f.bestmatch$MatchID)
+```
+
+##Load and format data from SV-Plaudit image scoring
+```{r}
+img_data_file = "~/Documents/Research/Maize/MaizeSV/docs/Supplemental/SV-Plaudit_Lumpy.txt"
+
+img = read.table(img_data_file, head = T)
+
+#prep SVmap data
+sv_img = merge(sv, Img, by = c("chrom", "pos", "end", "ref"))
+
+# sv_img %>% distinct(image) %>% nrow() #Not finding a match with all pictures.  Missing 379
+
+#Get matched variant ID
+matches = sv %>% distinct(ref, alt_ref, varID, VarID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) 
+
+sv_img2 = merge(sv_img, matches, by = c("ref", "varID"))
+
+#What about effect of SV frequency or SV size on image quality?
+```
+
+##Munge data for Figure 4A line plot
+```{r}
+#Generate data frame with all possible values of ref and all possible permutations (order matters) of alt_refs 
+tracks = data.frame(X1 = as.character(), X2 = as.character(), X3 = as.character(), X4 = as.character(), Ref = as.character())
+tt = c("B", "H", "M", "P", "W")
+for(i in 1:length(tt)){
+  ttt = permn(tt[-i])
+  df <- data.frame(matrix(unlist(ttt), nrow=length(ttt), byrow=T),stringsAsFactors=FALSE)  
+  df['Ref'] = tt[i]
+  tracks = rbind(tracks, df)
+}
+
+#Get matches for each line in tracks
+kk = foreach (j = 1:nrow(tracks), .combine="rbind") %do% {
+  Ref = tracks[j,]$Ref
+  altRefs = c(tracks[j,]$X1, tracks[j,]$X2, tracks[j,]$X3, tracks[j,]$X4)
+  ndat = addrefs(SV, Ref, altRefs)
+  ndat
+}
+
+kk %<>% mutate(NumAlts = nchar(as.character(altrefs)))
+```
+
+##Load SNP data and calculate mean genetic distances
+```{r}
+vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/docs/Supplemental/Genetic_distance.vcf.gz")
+Vcf = vcfR2genlight(vcf)
+
+#Set locus and population names
+locNames(Vcf) <- paste(vcf@fix[,1],vcf@fix[,2],sep="_")
+pop(Vcf)<-Vcf$ind.names
+
+#Calculate genetic distance
+tt = stamppNeisD(Vcf, pop = F)
+
+ttt = as.data.frame(tt) %>% rownames_to_column(var="name")
+```
+
+#SNP plot
+#Filtered B73v4 SNP VCFs in s3://pmonnaha/Maize/WiDiv_E2/VCFs/SNPs/
+#for f in ./B73v4_*_Platy.vcf.gz; do bcftools view --exclude-types indels,mnps --max-alleles 2 $f | bcftools filter -i 'F_PASS(GQ>10 & GT!="mis") > 0.75 && (N_PASS(GT="het") / N_SAMPLES) < 0.1' -o ${f%.vcf.gz}.flt.vcf.gz -Oz; done
+```{r}
+snp_sv_ovlp = "~/Documents/Research/Maize/MaizeSV/docs/Supplemental/SNP.SV.ovlp.txt"
+snp = read.table(snp_sv_ovlp, head = T)
+
+snp.sv = sv %>% filter(raw_num_alt>0 & raw_num_geno > 10 & svtype %in% c("DEL","DUP")) %>% distinct(ref, chrom, pos, end, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, chrom, pos, end, svtype, varID, raw_num_alt, raw_num_geno) %>% summarize(matches = sum(match)) %>% distinct(ref, chrom, pos, end, svtype, varID, raw_num_alt, raw_num_geno, matches) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes"), sv_freq = raw_num_alt / raw_num_geno) %>% filter(ref=="B73") %>% right_join(snp, by = c("ref", "chrom", "pos", "end", "svtype")) %>% mutate(snp_distance = case_when(snp_location=="US" ~ pos - snp_pos, snp_location=="DS" ~ snp_pos - end))
+
+# Snp.sv1 = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% summarize(num_snps = n())
+
+#Take 2 nearest SNPs on either side of SV and summarize.
+Snp.sv2 = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% top_n(2, -snp_distance) %>% summarize(snp_freq = mean(Snp_freq), snp_freq2 = var(Snp_freq), num_snps2 = n(), snp_freq.med = median(Snp_freq), snp_freq.min = min(Snp_freq), snp_freq.max = max(Snp_freq))
+
+#Take nearest SNP on either side
+Snp.sv3 = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% slice(which.min(snp_distance)) %>% ungroup()
+
+Snp.sv2 %<>% mutate(matched = case_when(VarID %in% SV$VarID ~ "yes", TRUE ~ "no"))
+Snp.sv3 %<>% mutate(matched = case_when(VarID %in% SV$VarID ~ "yes", TRUE ~ "no"))
 
 ```
 
-#Basic Tables and Figures comparing annotations.  Num. and Length of genes, number of homologs etc
+#Figure 1 -- Variant Calling
 ```{r}
-homs = read.table("~/Documents/Research/Maize/MaizeSV/misc/homologs.txt")
-homs %<>% mutate(ref = V1, gene = V2, alt = V3, altGene = V4) %>% select(ref, gene, alt, altGene)
+#Number by type; Substantial variation across reference w/ PH207 having ~2.5k fewer variants than W22
+sv %>% filter(svtype!="INV") %>% distinct(ref, varID, svtype) %>% mutate(Reference = ref, svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% select(-ref) %>% group_by(Reference, svtype) %>% summarize(n=n()) %>% spread(svtype, n) %>% gather(type, number, -Reference) %>% ggplot(aes(x=type, y = number, fill = Reference)) + geom_bar(stat="identity", position=position_dodge(), color = "black", alpha =0.9) + ylab("Number of Variants") + xlab("Structural Variant Type") + theme_bw() + theme(axis.text.y=element_text(size=16), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
 
-# homs %>% group_by(ref, gene, alt) %>% summarize(n = n()) %>% ggplot(aes(x = n, fill = ref)) + geom_histogram(position=position_dodge())
+#Upstream versus downstream stuff
+sv %>% filter(location!="-9" & svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, gene, svtype, location, mgq) %>% group_by(ref, svtype, location) %>% summarize(n=n(), meanGQ=mean(mgq)) %>% mutate(location = factor(location, levels=c("us","gene","ds"))) %>% ggplot(aes(x = ref, fill = location, y = n)) + geom_bar(stat="identity", position = position_dodge(), color="black", alpha = 0.9) + facet_wrap(~svtype) + ylab("Number of Variants") + xlab("Reference Genome") + scale_fill_discrete(name = "Location", breaks = c("us","gene", "ds"), labels = c("Upstream", "Gene Body", "Downstream")) + theme_bw() + theme(axis.text.y=element_text(size=16), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16, angle=45,hjust=1),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
 
+#Similar size distributions across references
+sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, length)%>% ggplot(aes(x = length/1000, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("") + scale_x_log10(name = "SV Length (kb)", breaks = c(0.1, 10, 1000, 100000), labels = c("0.1", "10", "1,000", "100,000")) + theme_bw() + theme(axis.text.y=element_text(size=16), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
+
+#Frequency polygons
+sv %>% filter(svtype!="INV" & raw_num_geno > 10) %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, raw_num_alt, raw_num_geno) %>% mutate(prop_alt = raw_num_alt / raw_num_geno) %>% ggplot(aes(x = prop_alt, color = ref, y = ..density..)) + geom_freqpoly(bins=99) + scale_color_discrete(name = "Reference\nGenome") + facet_wrap(~svtype, scales = "free_y", ncol=1) + ylab("Density") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw() + theme(axis.text.y=element_text(size=0), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
+
+```
+
+#Figure 2 -- Variant Quality
+No effect of reference on quality as measured by software, but clear effect on visual support.
+```{r}
+#PH207 has an abundance of DUPs with no split read support
+sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, sr)%>% ggplot(aes(x = sr + 1, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") +scale_x_log10(name = "Number of Split Reads", breaks = c(1, 10, 100, 1000), labels = c("1", "10", "100", "1,000"), limits = c(0.3,3000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+#No differences in amount of paired read support
+sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, pe)%>% ggplot(aes(x = pe + 1, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("") +scale_x_log10(name = "Number of Discordant Paired Reads", breaks = c(1, 10, 100, 1000), labels = c("1", "10", "100", "1,000"), limits = c(0.3,3000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+#Mean genotype quality does not differ among references
+sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, mgq)%>% ggplot(aes(x = mgq, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + xlab("Mean Genotype Quality") + ylab("SV type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+#Image stuff
+Img %>% distinct(ref, image, support) %>% mutate(svtype = str_sub(image, 1,3)) %>% filter(svtype != "INV") %>% ggplot(aes(x = ref, y = support, fill = svtype)) + geom_boxplot() + ylab("Prop. 'Support' Calls") + ggtitle("") + xlab("Reference Genome") + scale_fill_brewer(name="SV Type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+Img %>% distinct(ref, image, ReviseGenotype, RevBoth) %>% mutate(svtype = str_sub(image, 1,3), Revise = case_when(ReviseGenotype > 0 | RevBoth > 0 ~ 1, TRUE ~ 0)) %>% filter(svtype != "INV") %>% group_by(ref, svtype) %>% summarize(Revise = sum(Revise), n = n()) %>% ggplot(aes(x = ref, y = Revise / n, fill = svtype)) + geom_bar(stat="identity", position=position_dodge(), color = "black") + ylab("Pr[Flagged Genotyped]") + xlab("Reference Genome") + scale_fill_brewer(name="SV Type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+Img %>% distinct(ref, image, ReviseVariant, RevBoth) %>% mutate(svtype = str_sub(image, 1,3), Revise = case_when(ReviseVariant > 0 | RevBoth > 0 ~ 1, TRUE ~ 0)) %>% filter(svtype != "INV") %>% group_by(ref, svtype) %>% summarize(Revise = sum(Revise), n = n()) %>% ggplot(aes(x = ref, y = Revise / n, fill = svtype)) + geom_bar(stat="identity", position=position_dodge(), color = "black") + ylab("Pr[Flagged Breakpoint]") + xlab("Reference Genome") + scale_fill_brewer(name="SV Type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+```
+
+# Figure 3 -- Matching Variants
+```{r}
+#Pairwise Matches
+SV %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% group_by(ref, alt_ref, svtype) %>% summarize(n = n()) %>% mutate(Match="Filtered") %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% ggplot(aes(x = ref, y = n, fill = alt_ref)) + geom_bar(stat="identity", position = position_dodge(), color = "black", alpha = 0.9) + facet_wrap(~svtype, scales = "free_y") + xlab("Reference Genome") + scale_fill_discrete(name="Alternative\nReference") + ylab("Number of Matched Variants") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16, angle = 45, hjust = 1), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+#Line plot
+kk %>% group_by(ref, NumAlts) %>% summarize(Matches = mean(matches)) %>% mutate(Ref = factor(ref, levels = c("B","M","P","H","W"))) %>% ggplot(aes(x = NumAlts, color = Ref, y = Matches)) + geom_line(size = 1.5, position = position_dodge(width=0.1), alpha = 0.8) + scale_x_continuous(name = "Number of Alternative Reference Genomes\nused for cross-validation", breaks = seq(1,4)) + ylab("Mean Number of Variants") + scale_color_discrete(name="Reference Genome", breaks = c("B","M","P","H","W"), labels = c("B73","Mo17","PH207","PHB47","W22")) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
+
+
+```
+
+# Figure 4 -- Matched variants are higher quality
+```{r}
+#Genotype quality for different number of matches
+sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot() + ylab("Mean Genotype Quality") + xlab("Reference") + scale_fill_manual(name="Number of\nAlt. References\nwith a match", values = wes_palette("Zissou1")) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18), legend.text = element_text(size=16), legend.title = element_text(size=18)) 
+
+sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype !="INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = sr + 1, y = ref, fill = matched)) + geom_density_ridges(alpha = 0.3, scale = 0.9) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + xlab("Number of Split Reads") + ylab("Reference") + scale_x_log10(breaks = c(1, 10, 100, 1000, 10000), limits = c(0.5, 10000), labels=c(0,10,100,1000,10000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18)) 
+
+sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = pe + 1, y = ref, fill = matched)) + geom_density_ridges(alpha = 0.3, scale = 0.9) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + xlab("Number of Discordant Paired Reads") + ylab("Reference") + scale_x_log10(breaks = c(1, 10, 100, 1000, 10000), limits = c(0.5, 10000), labels=c(0,10,100,1000,10000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18)) 
+
+sv_img2 %>% filter(svtype.x!="INV") %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, svtype.x, support) %>% mutate(unan = case_when(support>0.75 ~ "yes", TRUE~"no")) %>% group_by(ref, matched, unan, svtype.x) %>% summarize(n=n()) %>% spread(unan, n) %>% mutate(prop_unan = yes / (yes + no)) %>% ggplot(aes(x = ref, y = prop_unan, fill = matched)) + geom_bar(stat="identity", position = position_dodge(), color = "black") + facet_wrap(~svtype.x) + scale_fill_discrete(name="Matched", labels = c("No","Yes")) + xlab("Reference Genome") + ylab("Prop. Variants 100% Supported") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14, angle=45, hjust=1), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14)) 
+```
+
+# Figure 5 -- Matched variants make more biological sense
+```{r}
+#Add supplemental for breaking apart by type
+#AFS for matched v unmatched 
+sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype, varID, raw_num_alt, raw_num_geno) %>% summarize(matches = sum(match)) %>% distinct(ref, svtype, varID, raw_num_alt, raw_num_geno, matches) %>% mutate(prop_alt = raw_num_alt / raw_num_geno, matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = prop_alt, color = matched, y = ..density..)) + geom_freqpoly(bins=20) + scale_color_discrete(name = "", labels = c("Unmatched", "Matched")) + facet_grid(rows = vars(ref)) + ggtitle("") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw() + theme(axis.text.y=element_text(size=0), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text=element_text(size=14)) + ylab("Density")
+
+#SV Length distribution for matched and unmatched
+sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe, length) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe), length = mean(length)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = length / 1000, y = ref, fill = matched)) + geom_density_ridges(alpha = 0.3, scale = 0.9) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + xlab("SV Length (kb)") + ylab("Reference") + scale_x_log10(breaks = c(0.01, 0.1, 1, 10, 100, 1000), limits = c(0.01, 1000), labels=c(0.01, 0.1, 1, 10,100,1000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
+
+#Difference in 2d density of SNP and SV frequency.  See header for defn of DensityDiffPlot() function 
+dens2d.b = DensityDiffPlot(Snp.sv3)
+# dens2d.a = DensityDiffPlot(Snp.sv2)
+dens2d.b
+
+```
+
+
+#Supplemental
+```{r}
+#Tables
 #Number of homologs in alternative references for each gene.
 homs %>% mutate(Reference = ref) %>% select(-ref) %>% group_by(Reference, gene, alt)  %>% summarize(n = n()) %>% group_by(Reference, alt, `# Homologs` = cut(n, breaks = c(0,1.1,2.1,1000000), labels = c("1","2",">2"))) %>% summarize(N = n()) %>% spread(alt,N) %>% formattable()
 
-homs %>% mutate(Reference = ref) %>% select(-ref) %>% group_by(Reference, gene, alt)  %>% summarize(n = n()) %>% filter(n==1) %>% group_by(Reference, alt) %>% summarize(N = n()) %>% ggplot(aes(x=Reference, fill=alt, y=N)) + geom_bar(stat="identity",position=position_dodge()) + ylab("Number of 1:1 homologs") + scale_fill_discrete(name="Alternative\nReference")
-
-ph = read.table("~/Documents/Research/Maize/references/PH207_genesOnly.chr.bed", stringsAsFactors = F)
-mo = read.table("~/Documents/Research/Maize/references/Mo17_genesOnly.bed", stringsAsFactors = F)
-w22 = read.table("~/Documents/Research/Maize/references/W22_genesOnly.bed", stringsAsFactors = F)
-b73 = read.table("~/Documents/Research/Maize/references/B73_genesOnly2.bed", stringsAsFactors = F)
-phb = read.table("~/Documents/Research/Maize/references/PHB47_genesOnly.bed", stringsAsFactors = F)
-
-ph %<>% mutate(ref = "PH207") %>% select(ref, V1, V2, V3, V4) %>% filter(V1 %in% c("chr02","chr03","chr04","chr05","chr06","chr07","chr08","chr09","chr10","chr01"))
-mo %<>% mutate(ref = "Mo17") %>% select(ref, V1, V2, V3, V4) %>% filter(substr(V1,1,3)=="chr")
-w22 %<>% mutate(ref = "W22") %>% select(ref, V1, V2, V3, V4) %>% filter(substr(V1,1,3)=="chr")
-b73 %<>% mutate(ref = "B73") %>% select(ref, V1, V2, V3, V4)
-phb %<>% mutate(ref = "PHB47") %>% select(ref, V1, V2, V3, V4)
-
-beds = do.call(rbind, list(ph, mo, w22, b73, phb))
-
-#Similar number of genes across annotations, but much greater gene length and consequently gene space in PH207
+#Table with Gene #, Total and Mean Length
 beds %>% mutate(length = abs(V3 - V2)) %>% group_by(ref) %>% summarize(Reference = unique(ref), `# Genes` = n(), `Total Length` = sum(length), `Mean Length`=mean(length)) %>% select(-ref) %>% formattable()
 
+#Figures
+#Number of one-to-one homologs for each pair of references
+homs %>% mutate(Reference = ref) %>% select(-ref) %>% group_by(Reference, gene, alt)  %>% summarize(n = n()) %>% filter(n==1) %>% group_by(Reference, alt) %>% summarize(N = n()) %>% ggplot(aes(x=Reference, fill=alt, y=N)) + geom_bar(stat="identity",position=position_dodge(), color = "black") + ylab("Number of 1:1 homologs") + scale_fill_discrete(name="Alternative\nReference")
+
+#Density plots of gene length distribution for each annotation
 beds %>% mutate(length = abs(V3 - V2)) %>% ggplot(aes(x = length/1000, fill = ref)) + geom_density(alpha =0.3) + scale_x_log10(name = "Gene Length (kb)") + scale_fill_discrete(name = "Reference")
 
-#Might be some relationship with mean gene length and likelihood of identifying duplicates?
-# SV = sv %>% distinct(ref, varID, svtype) %>% group_by(ref, svtype) %>% summarize(n=n()) %>% spread(svtype, n) %>% mutate(Total = DEL + DUP + INV + MEI)
-# Beds = beds %>% mutate(length = abs(V3 - V2)) %>% group_by(ref) %>% summarize(n = n(), TotalLength = sum(length), MeanLength=mean(length))
-# ll = merge(SV, Beds, by="ref")
-# ll %>% ggplot(aes(x = MeanLength, y = DUP)) + geom_point()
+#Lower heterozygosity in PHB47; greater heterozygosity in DUPs and INVs
+sv %>% distinct(ref, varID, svtype, num_hets, num_genos) %>% mutate(prop_het = (num_hets + 1) / (num_genos + 1)) %>% ggplot(aes(x = prop_het, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + xlim(0,1) + xlab("Proportion of Heterozygous genotypes")
+
+#Number of alt_refs that are matched for each variant
+SV %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% ggplot(aes(x = ref, fill = as.factor(matches), y = n)) + geom_bar(stat = "identity", position = position_dodge()) + xlab("Reference Genome") + scale_fill_discrete(name="Number of\nAlt. References\nwith a match") + ylab("Number of Variants")
+
+#AFS of matched v unmatched broken apart by type
+sv %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% filter(raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, location) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype, varID, raw_num_alt, raw_num_geno, location) %>% summarize(matches = sum(match)) %>% distinct(ref, svtype, varID, raw_num_alt, raw_num_geno, matches, location) %>% mutate(prop_alt = raw_num_alt / raw_num_geno, matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = prop_alt, color = matched, y = ..density..)) + geom_freqpoly(bins=20) + scale_color_discrete(name = "", labels = c("Unmatched", "Matched")) + facet_grid(rows = vars(ref), cols = vars(svtype)) + ggtitle("") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw() + theme(axis.text.y=element_text(size=0), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text=element_text(size=14)) + ylab("Density")
+
+#Others 
+#Size differences of matched
+sv %>% filter(raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, location, size_diff) %>% filter(alt_ref!="none" & VarID %in% SV$VarID ~ 1) %>% ggplot(aes(x=size_diff/1000, fill = svtype)) + geom_density(alpha=0.3) + facet_grid(cols=vars(ref), rows=vars(alt_ref), labeller = label_both) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + xlab("Size Difference (kb)")
+
+#Genetic distance of each reference genotype from all other samples
+ttt %>% dplyr::filter(name %in% c("B73","W22","PH207","PHB47","Mo17")) %>% gather(other_samp,value, -name) %>% ggplot(aes(x = name, y = value, fill = name)) + geom_violin() + geom_boxplot(width = 0.1, outlier.shape = NA) + xlab("Reference Genotype") + ylab("Genetic Distance")
+
+# Number of variants with at least 1 match following removal of specific references
+cc = c("PH207", "W22", "B73", "Mo17")
+CC = bind_rows(list(data.frame(V1="NA",V2="NA"), as.data.frame(t(combn(cc,1))), as.data.frame(t(combn(cc,2)))))
+
+jj = foreach (j = 1:nrow(CC), .combine="rbind") %do% {
+  exclude = CC[j,]
+  exclude = exclude[!is.na(exclude)]
+  aa = num1match(SV, exclude)
+  data.frame("LeftOut" = paste(exclude, collapse="/"), "n" = aa)
+}
+
+jj %>% mutate(LeftOut = case_when(LeftOut=="NA/NA" ~ "None", TRUE ~ as.character(LeftOut))) %>% mutate(LeftOut = factor(LeftOut, levels = c("None", "PH207", "Mo17", "W22", "B73", "PH207/Mo17", "PH207/W22", "PH207/B73", "W22/Mo17","W22/B73","B73/Mo17"))) %>%  ggplot(aes(x = LeftOut, y = n)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 25, hjust=1))
+```
+
+
+##Other Plots
+Unsorted
+```{r}
+
+#Joint distribution of SNPs and SVs...same scale for snps and SVs
+Snp.sv2 %>% mutate(Matched=matched) %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + scale_fill_distiller(palette= "Spectral", direction=1, guide=F) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none') + facet_grid(~Matched, label = label_both) + xlab("SV Frequency") + ylab("Mean SNP Frequency") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
+
+#SV freq versus SVsize...not iinteresting
+sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe, length) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe), length = mean(length), sv_freq = raw_num_alt / raw_num_geno) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = length / 1000, y = sv_freq, color = ref)) + geom_point(alpha = 0.3) + geom_smooth(method = "lm", se = F) + facet_grid(~matched) + xlab("SV Length (kb)") + ylab("SV Frequency") + scale_x_log10(breaks = c(0.01, 0.1, 1, 10, 100, 1000), limits = c(0.01, 1000), labels=c(0.01, 0.1, 1, 10,100,1000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
+
+#Other attempts at 2d AFS
+Snp.sv2 %>% filter(snp_location=="US") %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) + scale_fill_distiller(palette= "Spectral", direction=1) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none')
+
+Snp.sv2 %>% mutate(Matched=matched) %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + scale_fill_distiller(palette= "Spectral", direction=1) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none') + facet_grid(~Matched, label = label_both) + xlab("SV Frequency") + ylab("Mean SNP Frequency")
+
+Snp.sv2 %>% mutate(Matched=matched) %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density2d(geom="density2d", aes(color = Matched,alpha=..level..),size=1.5, contour=TRUE)
+
+#mean quality as function of number of distinct alt_ref matches
+SV %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot()
+
+#Does number of homologs vary by svtype?
+sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, varID, svtype, num_homs) %>% ggplot(aes(x = num_homs, y = ref, fill = svtype)) + geom_density_ridges2(alpha = 0.3, scale =0.9)
+
+sv %>% filter(svtype!="INV" & gq == "10" & num_homs !=-9 & num_homs < 10) %>% distinct(ref, varID, svtype, num_homs) %>% ggplot(aes(x = num_homs, fill = svtype)) + geom_histogram(position = position_dodge(), bins = 11) + facet_wrap(~ref) + xlab("Number of Homologs")
+
+
+#Correlation in genotype quality for matches (filtered by best matching genotypes)
+SV %>% distinct(ref, svtype, alt_ref, varID, mgq, amgq) %>% ggplot(aes(x = mgq, y = amgq, color = svtype)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm", se = F) + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + xlab("Mean Genotype Quality in CURRENT Reference") + ylab("Mean Genotype Quality in ALTERNATIVE Reference") + theme_bw() + ggtitle("Similar correlation in Genotype Quality for different pairs of references")
+
+#Density plots for number of pe or sr split by number of matches and svtype
+#Recodes variants with bad genotype matches as no-match
+sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Split Reads") + ylab("Reference")
+sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Discordant paired Reads") + ylab("Reference")
+#Total Support units
+sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + pe, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Total Support Units") + ylab("Reference")
+#Binning everything >=1
+sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5 & prop_dist_filt != -9) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = case_when(sum(match)==0 ~ "0", sum(match) > 0 ~ ">0")) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Support Units (PE + SR)") + ylab("Reference") + scale_fill_discrete(name = "Number of Alt Ref.\nMatches")
+
+#Density plots for number of pe or sr split by number of matches and svtype
+#No Recoding
+sv %>% filter(svtype!="INV" & gq == "10" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(y = ref, x = pe + 1, fill = matched)) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of discordant paired reads") + ylab("Reference")
+
+sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of split reads") + ylab("Reference")
+
+
+# Distributions of genotype distance following Filter for just best matching 
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none") %>% group_by(ref, alt_ref, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+#Fill by number of homologs
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4) %>% group_by(ref, alt_ref, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, prop_dist_filt, num_homs) %>% ggplot(aes(x = prop_dist_filt, fill = as.character(num_homs))) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + scale_fill_discrete(name = "Number of Homologs") + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+#Fill by type
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none") %>% group_by(ref, alt_ref, svtype, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, svtype, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt, fill = svtype)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+# Distributions of size differences following Filter for just best matching genotypes
+sv %>% group_by(ref, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff) %>% ggplot(aes(x = (size_diff + 1)/1000)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
+
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & as.character(svtype)==as.character(alt_type)) %>% group_by(ref, alt_ref, svtype, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, svtype, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt, fill = svtype)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
+
+#Fill by svtype
+sv %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff, svtype) %>% ggplot(aes(x = (size_diff + 1)/1000, fill = svtype)) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref)) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
+#Without MEI
+sv %>% filter(svtype!="MEI" & alt_type !="MEI") %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff, svtype) %>% ggplot(aes(x = (size_diff + 1)/1000, fill = svtype)) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref)) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
+
+sv %>% filter(num_homs == 1 & num_genos > 25 & gq == "30") %>% mutate(same_type = case_when(as.character(svtype)==as.character(alt_type) ~ "yes", as.character(svtype)!=as.character(alt_type) ~ "no")) %>% group_by(ref, alt_ref, varID) %>%  slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = log(size_diff), y = prop_dist_filt, fill = svtype, shape = same_type)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm")
+
+# find and plot those that are perfect matches for size and genotype
+sv %>% filter(size_diff==0 & prop_dist_filt==0 & num_genos > 5) %>% distinct(ref, alt_ref, varID, svtype, length) %>% group_by(ref, alt_ref, svtype) %>% summarize(n=n(), l = mean(length)) %>% as.data.frame() %>% gather(variable, value, -c(ref, alt_ref, svtype)) %>% ggplot(aes(x = ref, y = value, color = alt_ref, shape = svtype)) + geom_point(position = position_dodge(width = 0.3)) + facet_wrap(~variable, scales = "free_y") + ggtitle("filter(size_diff==0 & prop_dist_filt==0 & num_genos > 5)")
+
+#Genotype quality of for sequence data from each reference
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_alt_2ref, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9)
+
+#Reference bias in genotype quality scores
+sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_ref_2ref - gq_ref_2alt, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9) + xlab("Reference Bias in Genotype Quality\n(GQ of Ref seq. data mapped to Ref) - (GQ of Ref mapped to Alt)") + ylab("Reference")
+
+
 ```
 
 
@@ -229,457 +544,7 @@ sv %>% filter(gq=="10" & num_alt>0 & num_genos > 10 & svtype %in% c("DEL","DUP")
 #Split Reads for matched v unmatched 
 sv %>% filter(gq=="10" & num_alt>0 & num_genos > 10 & svtype %in% c("DEL","DUP")) %>% mutate(num_genos = mean(num_genos)) %>% distinct(ref, alt_ref, varID, VarID, svtype, num_alt, num_genos, sr, pe) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0), num_genos = mean(num_genos)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match), num_alt = mean(num_alt), prop_alt = mean(num_alt) / mean(num_genos)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = sr + 1, fill = matched, y = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + facet_grid(cols = vars(svtype)) + ggtitle("") + scale_x_log10() + xlab("Number of split reads") + theme_bw()
 
-```
 
-Image Scoring
-```{r}
-img = read.table("~/Documents/Research/Maize/MaizeSV/data/SV-Plaudit_Lumpy.txt", head = T)
-# Img = img %>% mutate(chrom = as.numeric(str_replace(chrom, "chr", "")), ref = case_when(ref == "B73v4" ~ "B73", ref == "W22v12" ~ "W22", TRUE ~ as.character(ref)), support = case_when(score == "Supports" ~ 1, score == "Revise" ~ 1, score == "ReviseGenotype" ~ 1, score == "ReviseVariant" ~ 1, score == "ReviseBoth" ~ 1, TRUE ~ 0), Nsupport = case_when(score == "Notsupport" ~ 1, TRUE ~ 0), pos = pos + 1) %>% group_by(chrom, pos, end, ref, image) %>% summarize(num_supp = sum(support), num_Nsupp = sum(support), n = n(),support = sum(support) / n(),  Nsupport = sum(Nsupport) / n())
-
-Img = img %>% filter(user %in% c("calli130", "and06259", "davi3387", "qunel002")) %>% distinct(user, image, score, chrom, pos, end, type, ref) %>% mutate(chrom = as.numeric(str_replace(chrom, "chr", "")), ref = case_when(ref == "B73v4" ~ "B73", ref == "W22v12" ~ "W22", TRUE ~ as.character(ref)), support = case_when(score == "Supports" ~ 1, TRUE ~ 0), Nsupport = case_when(score == "Notsupport" ~ 1, TRUE ~ 0), Nsupport = case_when(score == "Notsupport" ~ 1, TRUE ~ 0), RevGen = case_when(score == "ReviseGenotype" ~ 1, TRUE ~ 0), RevVar = case_when(score == "ReviseVariant" ~ 1, TRUE ~ 0), RevBoth = case_when(score == "ReviseBoth" ~ 1, TRUE ~ 0), pos = pos + 1) %>% group_by(chrom, pos, end, ref, image) %>% summarize(num_supp = sum(support), num_Nsupp = sum(Nsupport), n = n(),support = sum(support) / n(),  Nsupport = sum(Nsupport) / n(), ReviseGenotype = (sum(RevGen) + sum(RevBoth)) / n(), ReviseVariant = (sum(RevVar) + sum(RevBoth)) / n(), RevBoth = sum(RevBoth) / n()) %>% filter(n==4)
-
-Img2 = img %>% filter(user!="and06259") %>% mutate(chrom = as.numeric(str_replace(chrom, "chr", "")), ref = case_when(ref == "B73v4" ~ "B73", ref == "W22v12" ~ "W22", TRUE ~ as.character(ref)), support = case_when(score == "Supports" ~ 1, TRUE ~ 0), Nsupport = case_when(score == "Notsupport" ~ 1, TRUE ~ 0), pos = pos + 1) %>% group_by(chrom, pos, end, ref, image) %>% summarize(num_supp = sum(support), n = n(),support = sum(support) / n(), num_Nsupp = sum(support), Nsupport = sum(Nsupport) / n())
-
-#prep SVmap data
-# sv_img = sv10 %>% filter(location=="gene")
-
-sv_img = merge(sv, Img, by = c("chrom", "pos", "end", "ref"))
-
-# sv_img %>% distinct(image) %>% nrow() #Not finding a match with all pictures.  Missing 379
-
-Img %>% distinct(ref, image, support) %>% mutate(svtype = str_sub(image, 1,3)) %>% filter(svtype != "INV") %>% ggplot(aes(x = ref, y = support, fill = svtype)) + geom_boxplot() + ylab("Proportion of 'Support' calls per variant") + ggtitle("Lowest support for PH207, highest support for B73, largest discrepancy by type for PHB47")
-
-Img %>% distinct(ref, image, ReviseGenotype) %>% mutate(svtype = str_sub(image, 1,3)) %>% filter(svtype != "INV") %>% ggplot(aes(x = ref, y = ReviseGenotype, fill = svtype)) + geom_boxplot() + ylab("Proportion of 'ReviseGenotype' calls per Variant") + ggtitle("PH207 variants are more likely to have incorrect genotypes")
-
-Img %>% distinct(ref, image, ReviseVariant) %>% mutate(svtype = str_sub(image, 1,3)) %>% filter(svtype != "INV") %>% ggplot(aes(x = ref, y = ReviseVariant, fill = svtype)) + geom_boxplot() + ylab("Proportion of 'ReviseVariant' calls per Variant") + ggtitle("B73 is doing slightly better at getting breakpoints correct")
-
-# Img %>% distinct(ref, image, RevBoth) %>% mutate(svtype = str_sub(image, 1,3)) %>% filter(svtype != "INV") %>% ggplot(aes(x = ref, y = RevBoth, fill = svtype)) + geom_boxplot() + ylab("Proportion of 'ReviseBoth' calls per Variant")
-
-matches = sv %>% distinct(ref, alt_ref, varID, VarID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) 
-
-sv_img2 = merge(sv_img, matches, by = c("ref", "varID"))
-
-sv_img2 %>% filter(svtype.x!="INV") %>% distinct(ref, varID, matches, support) %>% ggplot(aes(x = matches, y = support, color = ref)) + geom_point(alpha = 0.2, position = position_jitter()) + geom_smooth(method = "lm", se = F) + xlab("Proportion of 'Support' calls") + ylab("Number of ALT references with a matched variant")
-
-sv_img2 %>% filter(svtype.x!="INV") %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, svtype.x, support) %>% group_by(ref, svtype.x, matched, support) %>% summarize(n = n()) %>% ggplot(aes(x = as.factor(support), y = n, fill = matched)) + geom_bar(stat="identity", position=position_dodge())
-
-sv_img2 %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, svtype.x, support) %>% filter(ref!="PHB47") %>% ggplot(aes(x = matched, y = support, color = ref)) + geom_boxplot() + facet_grid(~svtype.x) + ylab("Proportion of 'Support' calls") + xlab("Number of ALT references with a matched variant")
-
-sv_img2 %>% filter(svtype.x!="INV") %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, svtype.x, support) %>% mutate(unan = case_when(support>0.5 ~ "yes", TRUE~"no")) %>% group_by(ref, svtype.x, matched, unan) %>% summarize(n=n()) %>% ggplot(aes(x = matched, y = n, fill = unan)) + geom_bar(stat="identity",position=position_dodge()) + facet_grid(cols=vars(ref)) + scale_fill_discrete(name="Majority\nSupport", labels=c("No","Yes")) + ylab("Number of Variants") + scale_x_discrete(name="", breaks = c("no","yes"), labels = c("Unmatched", "Matched"))
-
-sv_img2 %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, support, gene) %>% filter(ref!="PHB47") %>% ggplot(aes(x = matched, y = support, color = ref)) + geom_boxplot()
-
-#Amaya effect
-sv_imgB = merge(sv10, Img2, by = c("chrom", "pos", "end", "ref"))
-sv_img3 = merge(sv_imgB, matches, by = c("ref", "varID"))
-
-sv_img3 %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, support, gene) %>% filter(ref!="PHB47") %>% ggplot(aes(x = matched, y = support, color = ref)) + geom_boxplot()
-
-#What about effect of SV frequency or SV size on image quality?
-```
-
-
-
-# Number of variants with at least 1 match following removal of specific references
-```{r}
-
-cc = c("PH207", "W22", "B73", "Mo17")
-CC = bind_rows(list(data.frame(V1="NA",V2="NA"), as.data.frame(t(combn(cc,1))), as.data.frame(t(combn(cc,2)))))
-
-num1match = function(dat, leave_out){
-  dat %<>% filter(!ref %in% leave_out & !alt_ref %in% leave_out) %>% mutate(ref = as.character(ref), alt_ref = as.character(alt_ref))
-  refs = dat %>% distinct(ref)
-  Sdat = tibble(VarID = as.character(), AltID = as.character())
-  for(i in 1:nrow(refs)){
-    sdat = dat %>% filter(ref == as.character(refs[i,])) %>% filter(!(AltID %in% Sdat$VarID)) %>% distinct(ref, alt_ref, VarID, AltID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% filter(match==1) %>% distinct(VarID)
-    Sdat = rbind(Sdat, sdat)
-    # print(paste(refs[i,],sdat %>% distinct(VarID) %>% nrow()))
-  }
-  return(Sdat %>% distinct(VarID) %>% nrow())
-}
-
-jj = foreach (j = 1:nrow(CC), .combine="rbind") %do% {
-  exclude = CC[j,]
-  exclude = exclude[!is.na(exclude)]
-  aa = num1match(SV, exclude)
-  data.frame("LeftOut" = paste(exclude, collapse="/"), "n" = aa)
-}
-
-jj %>% mutate(LeftOut = case_when(LeftOut=="NA/NA" ~ "None", TRUE ~ as.character(LeftOut))) %>% mutate(LeftOut = factor(LeftOut, levels = c("None", "PH207", "Mo17", "W22", "B73", "PH207/Mo17", "PH207/W22", "PH207/B73", "W22/Mo17","W22/B73","B73/Mo17"))) %>%  ggplot(aes(x = LeftOut, y = n)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 25, hjust=1))
-```
-
-Ascertainment idea
-```{r}
-#Adds alt_refs one at a time and records the number of matched variants for curr_ref
-addrefs = function(dat, curr_ref, alt_refs){
-  dat %<>% mutate(altRef = case_when(alt_ref=="PHB47" ~ "H", TRUE ~ str_sub(alt_ref, 1, 1)), Ref = case_when(ref=="PHB47" ~ "H", TRUE ~ str_sub(ref, 1, 1))) %>% filter(Ref == curr_ref) 
-  matches = data.frame(ref = as.character(), track = as.character(), altrefs = as.character(), matches = as.numeric())
-  
-  for(i in 1:length(alt_refs)){
-    include = alt_refs[1:i]
-    nmatches = dat %>% filter(altRef %in% include) %>% distinct(VarID) %>% nrow()
-    matches = rbind(matches, data.frame(ref = curr_ref, track = paste(alt_refs, collapse = ""), altrefs = paste(alt_refs[1:i], collapse = ""), matches = nmatches))
-
-  }
-  return(matches)
-}
-
-#Generate data frame with all possible values of ref and all possible permutations (order matters) of alt_refs 
-tracks = data.frame(X1 = as.character(), X2 = as.character(), X3 = as.character(), X4 = as.character(), Ref = as.character())
-tt = c("B", "H", "M", "P", "W")
-for(i in 1:length(tt)){
-  ttt = permn(tt[-i])
-  df <- data.frame(matrix(unlist(ttt), nrow=length(ttt), byrow=T),stringsAsFactors=FALSE)  
-  df['Ref'] = tt[i]
-  tracks = rbind(tracks, df)
-}
-
-#Get matches for each line in tracks
-kk = foreach (j = 1:nrow(tracks), .combine="rbind") %do% {
-  Ref = tracks[j,]$Ref
-  altRefs = c(tracks[j,]$X1, tracks[j,]$X2, tracks[j,]$X3, tracks[j,]$X4)
-  ndat = addrefs(SV, Ref, altRefs)
-  ndat
-}
-
-kk %<>% mutate(NumAlts = nchar(as.character(altrefs)))
-
-KK = kk %>% group_by(ref, NumAlts) %>% summarize(Mean = mean(matches), Min = min(matches), Max = max(matches)) %>% gather(stat, value, -c(ref, NumAlts))
-  
-kk %>% group_by(ref, NumAlts) %>% summarize(Matches = mean(matches)) %>% mutate(Ref = factor(ref, levels = c("B","M","P","H","W"))) %>% ggplot(aes(x = NumAlts, color = Ref, y = Matches)) + geom_line() + scale_x_continuous(name = "Number of Alternative Reference Genomes\nused for cross-validation", breaks = seq(1,4)) + ylab("Mean Number of Variants") + scale_color_discrete(name="Variants From", breaks = c("B","H","M","P","W"), labels = c("B73","PHB47","Mo17","PH207","W22"))
-
-```
-
-###Genetic distances
-```{r}
-vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/Merged.5.50k.flt.E2.vcf.gz")
-# vcf = read.vcfR("~/Documents/Research/Maize/MaizeSV/data/WiDiv_NJ_Tree_9-2019.vcf.gz")
-Vcf = vcfR2genlight(vcf)
-pops = read.table("~/Documents/Research/Maize/widiv/Maize_genotype_groups2.txt", head = T)
-
-locNames(Vcf) <- paste(vcf@fix[,1],vcf@fix[,2],sep="_")
-
-aa = as.data.frame(indNames(Vcf))
-aa %<>% dplyr::mutate(genotype = (indNames(Vcf))) %>% dplyr::select(genotype)
-
-aa = merge(aa, pops[,c("genotype","heterotic_group")], by = c("genotype"), all.x = T)
-aa %<>% dplyr::mutate(heterotic_group = case_when(is.na(.$heterotic_group) ~ "NoHG", TRUE ~ as.character(.$heterotic_group)))
-pop(Vcf)<-aa$heterotic_group
-
-dd = data.frame(Vcf$ind.names)
-dd %<>% mutate(Cols = case_when(Vcf.ind.names %in% c("B73","W22","PH207","PHB47","Mo17") ~ "red", TRUE ~ "black"))
-
-tt = stamppNeisD(Vcf, pop = F)
-
-TT = as.data.frame(rowMeans(tt)) %>% rownames_to_column(var="name")
-TT %>% dplyr::filter(name %in% c("B73","W22","PH207","PHB47","Mo17")) %>% mutate(Name = name, Avg.Gen.Distance = `rowMeans(tt)`) %>% select(Name, Avg.Gen.Distance) %>% formattable()
-
-ttt = as.data.frame(tt) %>% rownames_to_column(var="name")
-
-#Make plot
-ttt %>% dplyr::filter(name %in% c("B73","W22","PH207","PHB47","Mo17")) %>% gather(other_samp,value, -name) %>% ggplot(aes(x = name, y = value, fill = name)) + geom_violin() + geom_boxplot(width = 0.1, outlier.shape = NA) + xlab("Reference Genotype") + ylab("Genetic Distance")
-```
-
-#SNP plot
-#Filtered B73v4 SNP VCFs in s3://pmonnaha/Maize/WiDiv_E2/VCFs/SNPs/
-#for f in ./B73v4_*_Platy.vcf.gz; do bcftools view --exclude-types indels,mnps --max-alleles 2 $f | bcftools filter -i 'F_PASS(GQ>10 & GT!="mis") > 0.5 && (N_PASS(GT="het") / N_SAMPLES) < 0.1' -o ${f%.vcf.gz}.flt.vcf.gz -Oz; done
-#
-```{r}
-snp = read.table("~/Documents/Research/Maize/MaizeSV/data/B73_Platy.LSovlp.txt")
-snp %<>% mutate(chrom=V1,snp_pos=V2,snp_freq=V3) %>% separate(V4, c("ref", "sv_chrom", "pos", "end", "svtype", "snp_location"), "-") %>% mutate(pos = as.numeric(pos), end = as.numeric(end)) %>% select(ref, chrom, snp_pos, snp_location, snp_freq, pos, end, svtype)
-
-snp.sv = sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype %in% c("DEL","DUP")) %>% distinct(ref, chrom, pos, end, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, chrom, pos, end, svtype, varID, raw_num_alt, raw_num_geno) %>% summarize(matches = sum(match)) %>% distinct(ref, chrom, pos, end, svtype, varID, raw_num_alt, raw_num_geno, matches) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes"), sv_freq = raw_num_alt / raw_num_geno) %>% filter(ref=="B73") %>% right_join(snp, by = c("ref", "chrom", "pos", "end", "svtype")) %>% mutate(snp_distance = case_when(snp_location=="US" ~ pos - snp_pos, snp_location=="DS" ~ snp_pos - end))
-
-Snp.sv = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% top_n(5, -snp_distance) %>% ungroup()
-
-Snp.sv1 = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% summarize(num_snps = n())
-
-Snp.sv2 = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% top_n(2, -snp_distance) %>% summarize(snp_freq = mean(Snp_freq), snp_freq2 = var(Snp_freq), num_snps2 = n(), snp_freq.med = median(Snp_freq), snp_freq.min = min(Snp_freq), snp_freq.max = max(Snp_freq))
-
-Snp.sv3 = snp.sv %>% mutate(sv_freq = raw_num_alt / raw_num_geno, VarID = paste(ref, varID, sep = "-"), Snp_freq = snp_freq) %>% group_by(VarID, snp_location, svtype, sv_freq) %>% slice(which.min(snp_distance)) %>% ungroup()
-
-# Locs = sv %>% distinct(VarID, gene, location) %>% group_by(VarID, gene) %>% summarize(locs = paste(unique(gene), paste(location, collapse="-"), sep = "_")) %>% group_by(VarID) %>% summarize(Locs = paste(locs, collapse=";"))
-
-Snp.sv2 %<>% mutate(matched = case_when(VarID %in% SV$VarID ~ "yes", TRUE ~ "no"))
-Snp.sv1 %<>% mutate(matched = case_when(VarID %in% SV$VarID ~ "yes", TRUE ~ "no"))
-
-Snp.sv1 = merge(Snp.sv1, Locs, by = "VarID")
-
-
-Snp.sv %>% ggplot(aes(x = sv_freq, y = snp_freq, color = snp_location)) + geom_point(alpha = 0.2) + geom_smooth(method = "lm", se = F)
-
-Snp.sv2 %>% filter(snp_location=="US") %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) + scale_fill_distiller(palette= "Spectral", direction=1) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none')
-
-Snp.sv2 %>% mutate(Matched=matched) %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + scale_fill_distiller(palette= "Spectral", direction=1) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none') + facet_grid(~Matched, label = label_both) + xlab("SV Frequency") + ylab("Mean SNP Frequency")
-
-Snp.sv2 %>% mutate(Matched=matched) %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density2d(geom="density2d", aes(color = Matched,alpha=..level..),size=1.5, contour=TRUE)
-
-#Not interesting
-Snp.sv1 %>% filter(num_snps < 1000) %>% group_by(VarID, sv_freq, svtype, matched) %>% summarize(num_snps = mean(num_snps)) %>% ggplot(aes(x = sv_freq, y = num_snps)) + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + scale_fill_distiller(palette= "Spectral", direction=1) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none') + facet_grid(~matched)
-
-
-#look for signal in number of snps.  maybe don't take top5 above, and just do summary of n.
-#restrict distance from breakpoiint?
-#Should (anti)matching in upstream/downstream between SV and SNPs (relative to SVs) be required?
-
-```
-
-
-
-#Figure 1 -- Variant Calling
-```{r}
-#Maybe this as well
-#Number by type; Substantial variation across reference w/ PH207 having ~2.5k fewer variants than W22
-sv %>% filter(svtype!="INV") %>% distinct(ref, varID, svtype) %>% mutate(Reference = ref, svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% select(-ref) %>% group_by(Reference, svtype) %>% summarize(n=n()) %>% spread(svtype, n) %>% gather(type, number, -Reference) %>% ggplot(aes(x=type, y = number, fill = Reference)) + geom_bar(stat="identity", position=position_dodge(), color = "black", alpha =0.9) + ylab("Number of Variants") + xlab("Structural Variant Type") + theme_bw() + theme(axis.text.y=element_text(size=16), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-#Upstream versus downstream stuff
-sv %>% filter(location!="-9" & svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, gene, svtype, location, mgq) %>% group_by(ref, svtype, location) %>% summarize(n=n(), meanGQ=mean(mgq)) %>% mutate(location = factor(location, levels=c("us","gene","ds"))) %>% ggplot(aes(x = ref, fill = location, y = n)) + geom_bar(stat="identity", position = position_dodge(), color="black", alpha = 0.9) + facet_wrap(~svtype) + ylab("Number of Variants") + xlab("Reference Genome") + scale_fill_discrete(name = "Location", breaks = c("us","gene", "ds"), labels = c("Upstream", "Gene Body", "Downstream")) + theme_bw() + theme(axis.text.y=element_text(size=16), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16, angle=45,hjust=1),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
-
-#Similar size distributions across references
-sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, length)%>% ggplot(aes(x = length/1000, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("") + scale_x_log10(name = "SV Length (kb)", breaks = c(0.1, 10, 1000, 100000), labels = c("0.1", "10", "1,000", "100,000")) + theme_bw() + theme(axis.text.y=element_text(size=16), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
-
-#Frequency polygons
-sv %>% filter(svtype!="INV" & raw_num_geno > 10) %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, raw_num_alt, raw_num_geno) %>% mutate(prop_alt = raw_num_alt / raw_num_geno) %>% ggplot(aes(x = prop_alt, color = ref, y = ..density..)) + geom_freqpoly(bins=99) + scale_color_discrete(name = "Reference\nGenome") + facet_wrap(~svtype, scales = "free_y", ncol=1) + ylab("Density") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw() + theme(axis.text.y=element_text(size=0), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
-
-```
-
-#Figure 2 -- Variant Quality
-No effect of reference on quality as measured by software, but clear effect on visual support.
-```{r}
-#PH207 has an abundance of DUPs with no split read support
-sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, sr)%>% ggplot(aes(x = sr + 1, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") +scale_x_log10(name = "Number of Split Reads", breaks = c(1, 10, 100, 1000), labels = c("1", "10", "100", "1,000"), limits = c(0.3,3000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-#No differences in amount of paired read support
-sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, pe)%>% ggplot(aes(x = pe + 1, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("") +scale_x_log10(name = "Number of Discordant Paired Reads", breaks = c(1, 10, 100, 1000), labels = c("1", "10", "100", "1,000"), limits = c(0.3,3000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-#Mean genotype quality does not differ among references
-sv %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% distinct(ref, varID, svtype, mgq)%>% ggplot(aes(x = mgq, y = svtype, fill = ref)) + geom_density_ridges(alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + xlab("Mean Genotype Quality") + ylab("SV type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-#Image stuff
-Img %>% distinct(ref, image, support) %>% mutate(svtype = str_sub(image, 1,3)) %>% filter(svtype != "INV") %>% ggplot(aes(x = ref, y = support, fill = svtype)) + geom_boxplot() + ylab("Prop. 'Support' Calls") + ggtitle("") + xlab("Reference Genome") + scale_fill_brewer(name="SV Type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-Img %>% distinct(ref, image, ReviseGenotype, RevBoth) %>% mutate(svtype = str_sub(image, 1,3), Revise = case_when(ReviseGenotype > 0 | RevBoth > 0 ~ 1, TRUE ~ 0)) %>% filter(svtype != "INV") %>% group_by(ref, svtype) %>% summarize(Revise = sum(Revise), n = n()) %>% ggplot(aes(x = ref, y = Revise / n, fill = svtype)) + geom_bar(stat="identity", position=position_dodge(), color = "black") + ylab("Pr[Flagged Genotyped]") + xlab("Reference Genome") + scale_fill_brewer(name="SV Type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-Img %>% distinct(ref, image, ReviseVariant, RevBoth) %>% mutate(svtype = str_sub(image, 1,3), Revise = case_when(ReviseVariant > 0 | RevBoth > 0 ~ 1, TRUE ~ 0)) %>% filter(svtype != "INV") %>% group_by(ref, svtype) %>% summarize(Revise = sum(Revise), n = n()) %>% ggplot(aes(x = ref, y = Revise / n, fill = svtype)) + geom_bar(stat="identity", position=position_dodge(), color = "black") + ylab("Pr[Flagged Breakpoint]") + xlab("Reference Genome") + scale_fill_brewer(name="SV Type") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-```
-
-# Figure 3 -- Matching Variants
-```{r}
-#Pairwise Matches
-SV %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype)))%>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% group_by(ref, alt_ref, svtype) %>% summarize(n = n()) %>% mutate(Match="Filtered") %>% filter(svtype!="INV") %>% mutate(svtype = case_when(svtype == "MEI" ~ "DEL", TRUE ~ as.character(svtype))) %>% ggplot(aes(x = ref, y = n, fill = alt_ref)) + geom_bar(stat="identity", position = position_dodge(), color = "black", alpha = 0.9) + facet_wrap(~svtype, scales = "free_y") + xlab("Reference Genome") + scale_fill_discrete(name="Alternative\nReference") + ylab("Number of Matched Variants") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16, angle = 45, hjust = 1), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-#Line plot
-kk %>% group_by(ref, NumAlts) %>% summarize(Matches = mean(matches)) %>% mutate(Ref = factor(ref, levels = c("B","M","P","H","W"))) %>% ggplot(aes(x = NumAlts, color = Ref, y = Matches)) + geom_line(size = 1.5, position = position_dodge(width=0.1), alpha = 0.8) + scale_x_continuous(name = "Number of Alternative Reference Genomes\nused for cross-validation", breaks = seq(1,4)) + ylab("Mean Number of Variants") + scale_color_discrete(name="Reference Genome", breaks = c("B","M","P","H","W"), labels = c("B73","Mo17","PH207","PHB47","W22")) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=16), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18))
-
-
-```
-
-# Figure 4 -- Matched variants are higher quality
-```{r}
-#Genotype quality for different number of matches
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot() + ylab("Mean Genotype Quality") + xlab("Reference") + scale_fill_manual(name="Number of\nAlt. References\nwith a match", values = wes_palette("Zissou1")) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18)) 
-
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype !="INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = sr + 1, y = ref, fill = matched)) + geom_density_ridges(alpha = 0.3, scale = 0.9) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + xlab("Number of Split Reads") + ylab("Reference") + scale_x_log10(breaks = c(1, 10, 100, 1000, 10000), limits = c(0.5, 10000), labels=c(0,10,100,1000,10000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18)) 
-
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = pe + 1, y = ref, fill = matched)) + geom_density_ridges(alpha = 0.3, scale = 0.9) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + xlab("Number of Discordant Paired Reads") + ylab("Reference") + scale_x_log10(breaks = c(1, 10, 100, 1000, 10000), limits = c(0.5, 10000), labels=c(0,10,100,1000,10000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18)) 
-
-sv_img2 %>% filter(svtype.x!="INV") %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% distinct(ref, varID, matches, matched, svtype.x, support) %>% mutate(unan = case_when(support>0.75 ~ "yes", TRUE~"no")) %>% group_by(ref, matched, unan, svtype.x) %>% summarize(n=n()) %>% spread(unan, n) %>% mutate(prop_unan = yes / (yes + no)) %>% ggplot(aes(x = ref, y = prop_unan, fill = matched)) + geom_bar(stat="identity", position = position_dodge(), color = "black") + facet_wrap(~svtype.x) + scale_fill_discrete(name="Matched", labels = c("No","Yes")) + xlab("Reference Genome") + ylab("Prop. Variants 100% Supported") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14, angle=45, hjust=1), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14)) 
-```
-
-# Figure 5 -- Matched variants make more biological sense
-```{r}
-#Add supplemental for breaking apart by type
-#AFS for matched v unmatched 
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype, varID, raw_num_alt, raw_num_geno) %>% summarize(matches = sum(match)) %>% distinct(ref, svtype, varID, raw_num_alt, raw_num_geno, matches) %>% mutate(prop_alt = raw_num_alt / raw_num_geno, matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = prop_alt, color = matched, y = ..density..)) + geom_freqpoly(bins=20) + scale_color_discrete(name = "", labels = c("Unmatched", "Matched")) + facet_grid(rows = vars(ref)) + ggtitle("") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw() + theme(axis.text.y=element_text(size=0), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text=element_text(size=14)) + ylab("Density")
-
-#SV Length distribution for matched and unmatched
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe, length) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe), length = mean(length)) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = length / 1000, y = ref, fill = matched)) + geom_density_ridges(alpha = 0.3, scale = 0.9) + scale_fill_discrete(name = "", labels = c("Unmatched", "Matched")) + xlab("SV Length (kb)") + ylab("Reference") + scale_x_log10(breaks = c(0.01, 0.1, 1, 10, 100, 1000), limits = c(0.01, 1000), labels=c(0.01, 0.1, 1, 10,100,1000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
-
-#Joint distribution of SNPs and SVs...same scale for snps and SVs
-Snp.sv2 %>% mutate(Matched=matched) %>% ggplot(aes(x = sv_freq, y = snp_freq)) + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + scale_fill_distiller(palette= "Spectral", direction=1, guide=F) + scale_x_continuous(expand = c(0, 0)) + scale_y_continuous(expand = c(0, 0)) + theme(legend.position='none') + facet_grid(~Matched, label = label_both) + xlab("SV Frequency") + ylab("Mean SNP Frequency") + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
-
-#SV freq versus SVsize...not iinteresting
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, mgq, sr, pe, length) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq), sr = mean(sr), pe = mean(pe), length = mean(length), sv_freq = raw_num_alt / raw_num_geno) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = length / 1000, y = sv_freq, color = ref)) + geom_point(alpha = 0.3) + geom_smooth(method = "lm", se = F) + facet_grid(~matched) + xlab("SV Length (kb)") + ylab("SV Frequency") + scale_x_log10(breaks = c(0.01, 0.1, 1, 10, 100, 1000), limits = c(0.01, 1000), labels=c(0.01, 0.1, 1, 10,100,1000)) + theme_bw() + theme(axis.text.y=element_text(size=14), axis.title.y=element_text(size=18), axis.text.x=element_text(size=14), axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text = element_text(size=14))
-
-#Try different metrics 
-
-#plot snp and sv frequency versus size.
-
-#ensure that the FR field from Platypus is based on right denominator
-#increase missingness requirement
-#plot max - min snp freq histogram for SVs.
-
-
-
-```
-
-
-#Supplemental
-```{r}
-
-
-#Number of homologs in alternative references for each gene.
-homs %>% mutate(Reference = ref) %>% select(-ref) %>% group_by(Reference, gene, alt)  %>% summarize(n = n()) %>% group_by(Reference, alt, `# Homologs` = cut(n, breaks = c(0,1.1,2.1,1000000), labels = c("1","2",">2"))) %>% summarize(N = n()) %>% spread(alt,N) %>% formattable()
-
-beds %>% mutate(length = abs(V3 - V2)) %>% group_by(ref) %>% summarize(Reference = unique(ref), `# Genes` = n(), `Total Length` = sum(length), `Mean Length`=mean(length)) %>% select(-ref) %>% formattable()
-
-beds %>% mutate(length = abs(V3 - V2)) %>% ggplot(aes(x = length/1000, fill = ref)) + geom_density(alpha =0.3) + scale_x_log10(name = "Gene Length (kb)") + scale_fill_discrete(name = "Reference")
-
-#Lower heterozygosity in PHB47; greater heterozygosity in DUPs and INVs
-sv %>% distinct(ref, varID, svtype, num_hets, num_genos) %>% mutate(prop_het = (num_hets + 1) / (num_genos + 1)) %>% ggplot(aes(x = prop_het, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + ylab("SV type") + ggtitle("Slightly ower heterozygosity in PHB47; greater heterozygosity in DUPs and INVs") + xlim(0,1) + xlab("Proportion of Heterozygous genotypes")
-
-#Mean genotype quality does not differ among references
-sv %>% distinct(ref, varID, svtype, mgq)%>% ggplot(aes(x = mgq, y = svtype, fill = ref)) + geom_density_ridges(scale = 0.9, alpha = 0.3) + scale_fill_discrete(name = "Reference\nGenome") + xlab("Mean Genotype Quality") + ylab("SV type") + ggtitle("Minimal effect of reference genome on mean genotype quality")
-
-#Number of alt_refs that are matched for each variant
-SV %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% select(ref, matches, n) %>% spread(ref, n) %>% formattable()
-
-SV %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match)) %>% group_by(ref,matches) %>% summarize(n = n()) %>% mutate(prop = n / sum(n)) %>% ggplot(aes(x = ref, fill = as.factor(matches), y = n)) + geom_bar(stat = "identity", position = position_dodge()) + xlab("Reference Genome") + scale_fill_discrete(name="Number of\nAlt. References\nwith a match") + ylab("Number of Variants")
-
-#AFS of matched v unmatched broken apart by type
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, location) %>% mutate(match = case_when(alt_ref!="none" & VarID %in% SV$VarID ~ 1, TRUE ~ 0)) %>% group_by(ref, svtype, varID, raw_num_alt, raw_num_geno, location) %>% summarize(matches = sum(match)) %>% distinct(ref, svtype, varID, raw_num_alt, raw_num_geno, matches, location) %>% mutate(prop_alt = raw_num_alt / raw_num_geno, matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(x = prop_alt, color = matched, y = ..density..)) + geom_freqpoly(bins=20) + scale_color_discrete(name = "", labels = c("Unmatched", "Matched")) + facet_grid(rows = vars(ref), cols = svtype) + ggtitle("") + xlim(0,1) + xlab("Proportion of Alternative Genotypes") + theme_bw() + theme(axis.text.y=element_text(size=0), axis.title.y=element_text(size=18),axis.text.x=element_text(size=16),axis.title.x=element_text(size=18),legend.text = element_text(size=16), legend.title = element_text(size=18), strip.text=element_text(size=14)) + ylab("Density")
-
-#Others 
-#Size differences of matched
-sv %>% filter(gq=="10" & raw_num_alt>0 & raw_num_geno > 10 & svtype != "INV") %>% distinct(ref, alt_ref, varID, VarID, svtype, raw_num_alt, raw_num_geno, location, size_diff) %>% filter(alt_ref!="none" & VarID %in% SV$VarID ~ 1) %>% ggplot(aes(x=size_diff/1000, fill = svtype)) + geom_density(alpha=0.3) + facet_grid(cols=vars(ref), rows=vars(alt_ref), labeller = label_both) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + xlab("Size Difference (kb)")
-```
-
-#Joint density of sv and snp freqs
-```{r}
-# Calculate the common x and y range for geyser1 and geyser2
-xrng = range(c(Snp.sv3$sv_freq), na.rm=T)
-yrng = range(c(Snp.sv3$snp_freq))
-
-# Calculate the 2d density estimate over the common range
-d1 = Snp.sv3 %>% filter(matched=="yes") %.>% kde2d(.$sv_freq, .$snp_freq, lims=c(xrng, yrng), n=200)
-d2 = Snp.sv3 %>% filter(matched=="no" & !is.na(sv_freq)) %.>% kde2d(.$sv_freq, .$snp_freq, lims=c(xrng, yrng), n=200)
-
-# Confirm that the grid points for each density estimate are identical
-identical(d1$x, d2$x) # TRUE
-identical(d1$y, d2$y) # TRUE
-
-# Calculate the difference between the 2d density estimates
-diff12 = d1 
-diff12$z = d2$z - d1$z
-
-## Melt data into long format
-# First, add row and column names (x and y grid values) to the z-value matrix
-rownames(diff12$z) = diff12$x
-colnames(diff12$z) = diff12$y
-
-# Now melt it to long format
-diff12.m = melt(diff12$z, id.var=rownames(diff12))
-names(diff12.m) = c("SV_freq","Snp_freq","z")
-
-# Plot difference between geyser2 and geyser1 density
-ggplot(diff12.m, aes(SV_freq, Snp_freq, z=z, fill=z)) +
-  geom_tile() +
-  stat_contour(aes(colour=..level..), binwidth=0.001) +
-  scale_fill_gradient2(low="red",mid="white", high="blue", midpoint=0) +
-  scale_colour_gradient2(low=muted("red"), mid="white", high=muted("blue"), midpoint=0) +
-  coord_cartesian(xlim=xrng, ylim=yrng) +
-  guides(colour=FALSE)
-
-
-xrng = range(c(Snp.sv2$sv_freq), na.rm=T)
-yrng = range(c(Snp.sv2$snp_freq))
-
-# Calculate the 2d density estimate over the common range
-d1 = Snp.sv2 %>% filter(matched=="yes") %.>% kde2d(.$sv_freq, .$snp_freq, lims=c(xrng, yrng), n=200)
-d2 = Snp.sv2 %>% filter(matched=="no" & !is.na(sv_freq)) %.>% kde2d(.$sv_freq, .$snp_freq, lims=c(xrng, yrng), n=200)
-
-# Confirm that the grid points for each density estimate are identical
-identical(d1$x, d2$x) # TRUE
-identical(d1$y, d2$y) # TRUE
-
-# Calculate the difference between the 2d density estimates
-diff12 = d1 
-diff12$z = d2$z - d1$z
-
-## Melt data into long format
-# First, add row and column names (x and y grid values) to the z-value matrix
-rownames(diff12$z) = diff12$x
-colnames(diff12$z) = diff12$y
-
-# Now melt it to long format
-diff12.m = melt(diff12$z, id.var=rownames(diff12))
-names(diff12.m) = c("SV_freq","Snp_freq","z")
-
-# Plot difference between geyser2 and geyser1 density
-ggplot(diff12.m, aes(SV_freq, Snp_freq, z=z, fill=z)) +
-  geom_tile() +
-  stat_contour(aes(colour=..level..), binwidth=0.1) +
-     scale_fill_gradientn(colours = cols, 
-                            values = rescale(c(-10, -1, 0, 1, 10)),
-                            guide = "colorbar", limits=c(-10, 10)) +
-     scale_colour_gradientn(colours = cols, 
-                            values = rescale(c(-10, -1, 0, 1, 10)),
-                            guide = "colorbar", limits=c(-10, 10)) +
-  coord_cartesian(xlim=xrng, ylim=yrng) +
-  guides(colour=FALSE)
-```
-
-
-Unsorted
-```{r}
-
-#mean quality as function of number of distinct alt_ref matches
-SV %>% distinct(ref, alt_ref, varID, svtype, gq, gt_ref_2ref, mgq) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID) %>% summarize(matches = sum(match), meanGQ = mean(mgq)) %>% ggplot(aes(y = meanGQ, x = ref, fill = as.factor(matches))) + geom_boxplot()
-
-#Does number of homologs vary by svtype?
-sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, varID, svtype, num_homs) %>% ggplot(aes(x = num_homs, y = ref, fill = svtype)) + geom_density_ridges2(alpha = 0.3, scale =0.9)
-
-sv %>% filter(svtype!="INV" & gq == "10" & num_homs !=-9 & num_homs < 10) %>% distinct(ref, varID, svtype, num_homs) %>% ggplot(aes(x = num_homs, fill = svtype)) + geom_histogram(position = position_dodge(), bins = 11) + facet_wrap(~ref) + xlab("Number of Homologs")
-
-
-#Correlation in genotype quality for matches (filtered by best matching genotypes)
-SV %>% distinct(ref, svtype, alt_ref, varID, mgq, amgq) %>% ggplot(aes(x = mgq, y = amgq, color = svtype)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm", se = F) + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + xlab("Mean Genotype Quality in CURRENT Reference") + ylab("Mean Genotype Quality in ALTERNATIVE Reference") + theme_bw() + ggtitle("Similar correlation in Genotype Quality for different pairs of references")
-
-#Density plots for number of pe or sr split by number of matches and svtype
-#Recodes variants with bad genotype matches as no-match
-sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Split Reads") + ylab("Reference")
-sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Discordant paired Reads") + ylab("Reference")
-#Total Support units
-sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + pe, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Total Support Units") + ylab("Reference")
-#Binning everything >=1
-sv %>% filter(svtype!="INV" & gq == "10") %>% group_by(ref, svtype, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% ungroup() %>% distinct(ref, alt_ref, varID, svtype, sr, pe, prop_dist_filt) %>% mutate(match = case_when((alt_ref!="none" & prop_dist_filt < 0.5 & prop_dist_filt != -9) ~ 1, (alt_ref=="none" | prop_dist_filt >= 0.5) ~ 0)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = case_when(sum(match)==0 ~ "0", sum(match) > 0 ~ ">0")) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + pe + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of Support Units (PE + SR)") + ylab("Reference") + scale_fill_discrete(name = "Number of Alt Ref.\nMatches")
-
-#Density plots for number of pe or sr split by number of matches and svtype
-#No Recoding
-sv %>% filter(svtype!="INV" & gq == "10" & ref !="PHB47") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% mutate(matched = case_when(matches == 0 ~ "no", TRUE ~ "yes")) %>% ggplot(aes(y = ref, x = pe + 1, fill = matched)) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of discordant paired reads") + ylab("Reference")
-
-sv %>% filter(svtype!="INV" & gq == "10") %>% distinct(ref, alt_ref, varID, svtype, sr, pe) %>% mutate(match = case_when(alt_ref=="none" ~ 0, alt_ref!="none" ~ 1)) %>% group_by(ref, svtype,varID, sr, pe) %>% summarize(matches = sum(match)) %>% ungroup() %>% select(ref, matches, sr, pe, svtype) %>% ggplot(aes(y = ref, x = sr + 1, fill = as.factor(matches))) + geom_density_ridges(alpha = 0.4, scale = 0.9) + facet_wrap(~svtype) + scale_x_log10() + xlab("Number of split reads") + ylab("Reference")
-
-
-# Distributions of genotype distance following Filter for just best matching 
-sv %>% dplyr::filter(gq=="10" & alt_ref!="none") %>% group_by(ref, alt_ref, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
-
-#Fill by number of homologs
-sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4) %>% group_by(ref, alt_ref, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, prop_dist_filt, num_homs) %>% ggplot(aes(x = prop_dist_filt, fill = as.character(num_homs))) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + scale_fill_discrete(name = "Number of Homologs") + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
-
-#Fill by type
-sv %>% dplyr::filter(gq=="10" & alt_ref!="none") %>% group_by(ref, alt_ref, svtype, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, svtype, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt, fill = svtype)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
-
-# Distributions of size differences following Filter for just best matching genotypes
-sv %>% group_by(ref, alt_ref, varID) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff) %>% ggplot(aes(x = (size_diff + 1)/1000)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
-
-sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & as.character(svtype)==as.character(alt_type)) %>% group_by(ref, alt_ref, svtype, varID) %>% dplyr::slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, svtype, prop_dist_filt) %>% ggplot(aes(x = prop_dist_filt, fill = svtype)) + geom_density() + facet_grid(rows = vars(ref), cols = vars(alt_ref), labeller = label_both) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Genotype Distance (as proportion of max possible value")
-
-#Fill by svtype
-sv %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff, svtype) %>% ggplot(aes(x = (size_diff + 1)/1000, fill = svtype)) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref)) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
-#Without MEI
-sv %>% filter(svtype!="MEI" & alt_type !="MEI") %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% distinct(ref, alt_ref, varID, size_diff, svtype) %>% ggplot(aes(x = (size_diff + 1)/1000, fill = svtype)) + geom_density(alpha = 0.3) + facet_grid(rows = vars(ref), cols = vars(alt_ref)) + scale_x_log10(labels = scaleFUN, breaks = c(0.00001, 1, 100, 100000)) + ggtitle("Filtered for minimum genotype distance between SVs.\nDistance is calculated between SVs in cross-reference homologous genes.") + xlab("Size Difference (kb)")
-
-sv %>% filter(num_homs == 1 & num_genos > 25 & gq == "30") %>% mutate(same_type = case_when(as.character(svtype)==as.character(alt_type) ~ "yes", as.character(svtype)!=as.character(alt_type) ~ "no")) %>% group_by(ref, alt_ref, varID) %>%  slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = log(size_diff), y = prop_dist_filt, fill = svtype, shape = same_type)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm")
-
-# find and plot those that are perfect matches for size and genotype
-sv %>% filter(size_diff==0 & prop_dist_filt==0 & num_genos > 5) %>% distinct(ref, alt_ref, varID, svtype, length) %>% group_by(ref, alt_ref, svtype) %>% summarize(n=n(), l = mean(length)) %>% as.data.frame() %>% gather(variable, value, -c(ref, alt_ref, svtype)) %>% ggplot(aes(x = ref, y = value, color = alt_ref, shape = svtype)) + geom_point(position = position_dodge(width = 0.3)) + facet_wrap(~variable, scales = "free_y") + ggtitle("filter(size_diff==0 & prop_dist_filt==0 & num_genos > 5)")
-
-#Genotype quality of for sequence data from each reference
-sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_alt_2ref, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9)
-
-#Reference bias in genotype quality scores
-sv %>% dplyr::filter(gq=="10" & alt_ref!="none" & num_homs < 4 & num_genos > 25) %>% group_by(ref, alt_ref, varID, svtype) %>% slice(which.min(prop_dist_filt)) %>% ggplot(aes(x = gq_ref_2ref - gq_ref_2alt, fill = alt_ref, y = ref)) + geom_density_ridges(alpha=0.5, scale = 0.9) + xlab("Reference Bias in Genotype Quality\n(GQ of Ref seq. data mapped to Ref) - (GQ of Ref mapped to Alt)") + ylab("Reference")
 
 
 ```

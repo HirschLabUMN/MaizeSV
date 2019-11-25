@@ -1,3 +1,14 @@
+"""
+    Description: This is the primary script that is used to cross-validate SV variants across reference genomes.  Users should have run the necessary scripts to prepare the VCFs (output of annotate_pickle_vcfs.py) and gene-keys (output of pickle_homologue_dicts.py).  The first output file (suffix: .results.txt) summarizes relavent info for each match, whereas the second output file (suffix: .samples.txt) contains the list of samples that were filtered and/or did not match across references for each match, which could be used for filtering sample genotypes when creating consensus calls across references.")
+    Required Arguments:
+        -f:  tab delimited file with 3 colums: 1.)key name used in homologue dictionary (e.g. B73, W22, PHB47, and PH207) 2.) the npz file of the converted vcf (created with annotate_pickle_vcf.py), and 3.) the compressed dictionary containing homolog info (created by pickle_homologue_dicts.py)
+        -o:  Directory to write the two output files
+        -d:  tmp_directory
+    Optional Arguments:
+        -s:  output_prefix. default="SVmap"
+        -gq:  Filter all genotypes below this threshold. Directly impacts matching and subsequently genotype distance calculations; Default = 0
+        -mi:  minimum number of inidividuals (with sufficient genotype quality in both references) needed to calculate a distance between genotype matrices; Default = 0
+"""
 
 
 import pickle
@@ -236,7 +247,7 @@ if __name__ == "__main__":
     parser.add_argument('-s', type=str, metavar='output_prefix', default="SVmap")
     parser.add_argument('-gq', type=int, metavar='genotype_quality_threshold', default=0, help="Filter all genotypes below this threshold. Directly impacts matching and subsequently genotype distance calculations; Default = 0")
     parser.add_argument('-mi', type=int, metavar='minimum_individuals', default=0, help="minimum number of inidividuals (with sufficient genotype quality in both references) needed to calculate a distance between genotype matrices; Default = 0")
-    parser.add_argument('-d', type=str, metavar='tmp_directory', default="/Users/pmonnahan/Documents")
+    parser.add_argument('-d', type=str, metavar='tmp_directory', required=True)
 
     args = parser.parse_args()
 
