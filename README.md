@@ -33,7 +33,7 @@ Install _cutadapt_ using pip
 
 Install _sickle_ by cloning the git repository and typing ‘make’ from within the directory
 
-    git clone <https://github.com/najoshi/sickle.git>
+    git clone https://github.com/najoshi/sickle.git
     cd sickle
     make
 
@@ -42,7 +42,8 @@ Install _sickle_ by cloning the git repository and typing ‘make’ from within
 Speedseq is used to map fastq files to each reference genome (via the align submodule) and is also used to call SVs with Lumpy (via the sv submodule).  This process will also install _sambamba_ and _samblaster_, which are necessary for mapping and merging of sequence data.
 
     module load cmake
-    git clone --recursive <https://github.com/hall-lab/speedseq>
+    module load gcc
+    git clone --recursive https://github.com/hall-lab/speedseq
     cd speedseq
     make
 
@@ -53,6 +54,8 @@ E.g.
 from within the speedseq directory.
 
 ### _RepeatMasker_
+
+    module load repeatmasker
 
 Both Genome STRiP and Lumpy (svtools classify) require a list of mobile element insertion sites, which are most easily produced via RepeatMasker <http://www.repeatmasker.org/>
 
