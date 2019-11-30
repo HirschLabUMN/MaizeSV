@@ -6,7 +6,7 @@ Structural variant discovery using whole genome short-read sequence data.  Reads
 
 #### Important Notes
 
-The "< >" notation indicates a parameter, path, etc. that needs to be specified by the user when running the code/command.  For instance, the user would specify the path to the reference fasta file in the following command.
+The "< >" notation indicates a parameter, path, etc. that needs to be specified by the user when running the code/command.  For instance, the user would specify the path to the reference fasta file in the following command WITHOUT including the "< >".
 
         bwa index <reference_fasta>
 
@@ -106,7 +106,7 @@ To install all necessary components to run **filter_fasta.py**, perform the fol
 2.Run the program as follows: 
 
     chmod +x filter_fasta.py
-    python filter_fasta.py your_ids.txt IN.fasta OUT.fasta
+    python filter_fasta.py <your_ids.txt> <IN.fasta> <OUT.fasta>
 
 where: 
 
@@ -154,22 +154,24 @@ To generate commands for cutadapt and sickle, use the script _./scripts/code/_*
 
     python Generate_CutAdapt_commands.py -c <path_to_cutadapt> \
     -s <path_to_sickle> \
-    -r read_path_file \
-    -o output_directory >> commands_file
+    -r <read_path_file> \
+    -o <output_directory> >> <commands_file>
 
 whereas for data in separate files do:
 
-    python Generate_CutAdapt_commands.py -c path_to_cutadapt \
-    -s path_to_sickle \
-    -r read1_path_file \
-    -r2 read2_path_file \
-    -o output_directory >> commands_file
+    python Generate_CutAdapt_commands.py -c <path_to_cutadapt> \
+    -s <path_to_sickle> \
+    -r <read1_path_file> \
+    -r2 <read2_path_file> \
+    -o <output_directory> >> <commands_file>
 
 where the _read1_path_file_ contains the forward read files and _read2_path_file_ contains the paths to the reverse reads.  
 
 **NOTE**: the ‘>>’ in the above commands will append the output of each run to the commands_file, which is useful for combining commands for different sets of interleaved/separate fastq files.  However, be sure the commands_file doesn’t already exist, or you may potentially append on top of a bunch of old commands that you don’t want to include.
 
-Run commands as a task array with script _./scripts/jobs/_**Cutadapt.sh**.  Open **Cutadapt.sh** and modify the paths where indicated prior to running.
+Run commands as a task array with script _./scripts/jobs/_**Cutadapt.sh**, via:
+
+    qsub -t <XX>-<YY> Cutadapt.sh -F "<path_to_command_file>"
 
 
 ## Mapping Fastq Files
@@ -188,13 +190,13 @@ We use _speedseq_ for mapping, position-sorting, and extraction of split and di
 
 Generate _speedseq_ commands with _./scripts/code/_**Generate_SpeedSeq_commands.py**
 
-    python Generate_SpeedSeqAlign_commands.py -f fastq_directory \
-    -k sample_fastq_key  \
-    -o output_directory \
-    -r reference_path_file \
-    -c number_of_cores \
-    -m number_of_Gb_memory \
-    -s path_to_speedseq_directory > speedseq_command_file
+    python Generate_SpeedSeqAlign_commands.py -f <fastq_directory> \
+    -k <sample_fastq_key>  \
+    -o <output_directory> \
+    -r <reference_path_file> \
+    -c <number_of_cores> \
+    -m <number_of_Gb_memory> \
+    -s <path_to_speedseq_directory> > <speedseq_command_file>
 
 From extensive experimentation, I have found that using '-c 18 -m 30', is a good sweet-spot to prevent jobs from exceeding the max memory on a node (and thus failing).  
 
@@ -202,13 +204,13 @@ Given the large number of nodes needed to complete all mapping commands, it is m
 
 For the ‘large’ queue, the maximum number of nodes is 48 and the maximum time limit is 24 hrs.  Trials with _speedseq_  suggest ~8hrs is a reasonable expectation for a single mapping job.  Therefore, ~3 jobs per node ought to complete within the time limit, resulting in (48 nodes * 3 jobs/node) 144 total jobs per run in the large queue.  We can split the _speedseq_command_file_ into multiple files each containing 144 lines using: 
 
-    split -l 144 speedseq_command_file -a 1 -d speedseq_commands_
+    split -l 144 <speedseq_command_file> -a 1 -d speedseq_commands_
 
 This will produce a number of files named _speedseq_commands_X_ where X will be replaced by a numerical index.  The job script ./scripts/jobs/ **Speedseq_large.sh,** implemented as a task array, can be used to submit a job to the ‘large’ queue for each of the subsetted command files.  Open **Speedseq_large.sh** and modify the paths where indicated.  Alternatively, jobs in the command file can be individually submitted as a task array using ./scripts/jobs/Speedseq.sh via
 
-    qsub -t XX-YY Speedseq.sh -F "<command_file>"
+    qsub -t <XX>-<YY> Speedseq.sh -F "<command_file>"
 
-where XX-YY specifies the numeric range (line numbers) of the command file that you wish to submit and *command_file* is the file containing the previously generated commands.
+where XX and YY specifies the numeric range (line numbers) of the command file that you wish to submit and *command_file* is the file containing the previously generated commands.
 <br />
 
 #### Merging BAMs — _sambamba_
@@ -223,6 +225,12 @@ The script  **Generate_MergeBAMs_commands.py**  in _./scripts/code/_ can be us
 
 Run _sambamba_  commands as task array implemented in ./scripts/jobs/ **Sambamba_MergeBAMs.sh**.  Be sure to open **Sambamba_MergeBAMs.sh** __ and modify paths where necessary.  ALSO, be sure to modify the ‘ppn’ field to reflect the number of cores specified with **Generate_MergeBAMs_commands.py** and also adjust the ‘mem’ field appropriately. 
 
+You can use the shell script *./scripts/jobs/Sambamba_MergeBAMs.sh* to submit the jobs in the *command_file* as a task array, via:
+
+    qsub -t <XX>-<YY> Sambamba_MergeBAMs.sh -F "<path_to_command_file>"
+
+, where XX and YY correspond to the range of line numbers in the *command_file* that user has specified.
+
   
 ## SV Discovery
 
@@ -232,13 +240,13 @@ NOTE: The following bed files have already been created for a buffer size of 2kb
 
 To create the bed files that will contain the non-genic regions to be excluded for each reference, use the script ./scripts/code/make_nongenic_bed.py:
 
-    python make_nongenic_bed.py -gff gff_file -b buffer_size > {REF}.NonGenicMask.bed
+    python make_nongenic_bed.py -gff <gff_file> -b <buffer_size> > <reference_name>.NonGenicMask.bed
 
 The -b option specifies a buffer on either side of gene boundary.  E.g Gene1 ends at 100bp and Gene2 starts at 500bp.  If b=10, then the non-genic region will be 110-490.  Current analysis are being done with -b 2000.
 
 While Lumpy requires a bed file specifying regions to *exclude*, Genome STRiP wants a _.list_ file of regions to *include*.  To make these _.list_ files, do:
 
-    python make_genic_bed.py -gff gff_file -b buffer_size > {REF}.genic.list
+    python make_genic_bed.py -gff <gff_file> -b <buffer_size> > <reference_name>.genic.list
 
 ### Lumpy
 
@@ -254,11 +262,11 @@ Note: Make certain to run speedseq sv using the following options: -v -d -P -g -
 
 To generate commands for speedseq sv, use the script ./scripts/code/Generate_SpeedSeqSV_commands.py:
 
-    python Generate_SpeedSeqSV_commands.py -b bam_directory \
-      -r reference_path_file \
-      -o output_directory \
-      -c number_of_cores \
-      -s speedseq_directory
+    python Generate_SpeedSeqSV_commands.py -b <bam_directory> \
+      -r <reference_path_file> \
+      -o <output_directory> \
+      -c <number_of_cores> \
+      -s <speedseq_directory> > <command_file>
 
 The reference_path_file is the same as before, but with an additional column containing the path to the non-genic bed files created with make_nongenic_bed.py.
 
@@ -275,11 +283,11 @@ After everything installs successfully, the first step is to use svtools lsort, 
 
 These two processes are implemented in ./scripts/jobs/SVtools_SortAndMerge.sh as follows:
 
-    qsub SVtools_SortAndMerge.sh -F "input_vcf_dir output_vcf temp_dir batch_size percent_slop” \
+    qsub SVtools_SortAndMerge.sh -F "<input_vcf_dir> <output_vcf> <temp_dir> <batch_size> <percent_slop>” \
     -l mem=20gb,walltime=24:00:00 \
     -q mesabi \
-    -o stdout_file \
-    -e stderr_file
+    -o <stdout_file> \
+    -e <stderr_file>
 
 All arguments are required, must follow correct order, and must be space-delimited within quotations following the -F flag.  You can change the requested memory and walltime using the -l flag.  
 
@@ -287,21 +295,21 @@ _input_vcf_dir_ is directory containing per-individual VCFs.  If you have called
 
 The next step is to run the svtools genotype and svtools copynumber.  Prior to this, you must create the coordinates_file needed for CNVnator for each of the merged vcf files.
 
-    zcat merged_ref.vcf.gz > merged_ref.vcf
+    zcat <merged_ref.vcf.gz> > <merged_ref.vcf>
     source activate py27
-    create_coordinates -i merged_ref.vcf -o ref_coordinates_file
+    create_coordinates -i <merged_ref.vcf> -o <ref_coordinates_file>
 _create_coordinates_ is a script that ships with svtools and should install as an executable in your /usr/bin/ directory.  It will be available after activating the python 2.7 virtual environment in which svtools was installed.
 
 To generate commands for svtools genotype and svtools copynumber use the script in ./scripts/code/Generate_SVtools_Genotype_commands.py
 
     python Generate_SVtools_Genotype_commands.py \
-      -b bam_directory_used_in_speedseq_sv \
-      -o output_directory \
-      -v merged_ref.vcf.gz \
-      -c ref_coordinates_file \
-      -s path_to_speedseq_software_directory \
-      -w window_size >> svtools_genotype_commands_file
-You will need to run this once for each merged_ref.vcf.  These commands can be run using ./scripts/jobs/SVtools_Genotype.sh, which uses GNU parallel.  They can also be split and run as multiple GNU parallel jobs via a task array as we did with Speedseq_large.sh.
+      -b <bam_directory_used_in_speedseq_sv> \
+      -o <output_directory> \
+      -v <merged_ref.vcf.gz> \
+      -c <ref_coordinates_file> \
+      -s <path_to_speedseq_software_directory> \
+      -w <window_size> >> <svtools_genotype_commands_file>
+The default value of 300 for the window size parameter seems to perform robustly.  Lower values will likely result in job failures.  You will need to run this once for each merged_ref.vcf.  These commands can be run using ./scripts/jobs/SVtools_Genotype.sh, which uses GNU parallel.  They can also be split and run as multiple GNU parallel jobs via a task array as we did with Speedseq_large.sh.
 
 NOTE: The ‘>>’ will append commands to a file, so if an older file already exists, you should delete the older file before running this script.
 
@@ -309,7 +317,7 @@ The final step in the Lumpy/svtools pipeline involves pasting the individual gen
 
 Use the script ./scripts/jobs/SVtools_PastePruneClassify.sh:
 
-    qsub SVtools_PastePruneClassify.sh -F "vcf_dir merged.vcf out_prefix dist eval_param te.bed”
+    qsub SVtools_PastePruneClassify.sh -F "<vcf_dir> <merged.vcf> <out_prefix> <dist> <eval_param> <te.bed>”
     -l mem=20gb,walltime=24:00:00
     -o stdout_file \
     -e stderr_file
