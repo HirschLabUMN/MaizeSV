@@ -4,13 +4,21 @@
 
 Structural variant discovery using whole genome short-read sequence data.  Reads are preprocessed with Sickle and CutAdapt, then mapped to multiple refernce genomes using SpeedSeq. Currently, structural variants are identified with LUMPY and Genome STRiP. Custom scripts to generate consensus call set across reference genomes and softwares.  Shell scripts within the ./jobs directory are designed to implement the softwares and scripts on an HPC using an SGE job submission system. 
 
-## Requirements
+#### Important Notes
 
-### Python
+The "< >" notation indicates a parameter, path, etc. that needs to be specified by the user when running the code/command.  For instance, the user would specify the path to the reference fasta file in the following command.
+
+        bwa index <reference_fasta>
 
 All of the scripts in the ./scripts/code/ directory use python 3.6.  Load this on the cluster by:
 
     module load python/3.6.3
+
+At the bottom of the README, you can find a list of helpful commands at various stages in the pipeline.
+
+## Requirements
+
+### Python
 
 Python 2.7 is required for SVtools (a component of the Lumpy pipeline)
 
@@ -310,6 +318,8 @@ vcf_dir is the input directory containing per-individual VCFs.  If you have call
 
 ### Genome STRiP
 
+**NOTE**: Genome STRiP was abandoned, so the following section can be ignored.
+
 Many of the Genome STRiP utilities rely on a script called Queue.jar that will automatically launch and manage a large number of (grand)child processes.  In order for these to run, they must inherit the environment from the parent job.  One way to accomplish this is to modify your _~/.bashrc_ profile, so that all necessary paths and softwares are loaded every time a job is launched under your username.  For me, the following lines were added to _~/.bashrc_:
 
     module load htslib/1.6
@@ -471,11 +481,11 @@ filtering sample genotypes when creating consensus calls across references.
                             Default = 0
       -d tmp_directory
 
-### Notes
+## Notes
 
 * * *
 
-#### Parallelization
+### Parallelization
 
 There are two options for parallelizing jobs on the MSI cluster:
 
@@ -496,6 +506,47 @@ for the former, and:
     qsub -t 0-500 fastqc_TaskArray.sh
 
 for the latter, replacing ‘500’ for the total number of commands in your command file.  Failed jobs can be resubmitted with ``qsub -t job_number``
+
+### Useful Commands
+
+Get deduplicate percentages from fastqc
+
+    grep Deduplicate <fastqc_results_dir>/*/fastqc_data.txt | awk '{print $4}' > <output_file>
+
+
+Get adaptor info from cut adapt
+
+    grep -n -e filter -e Read <stdout_directory>/cutadapt_set*.o-* | grep "%" | awk '{print $1, $2, $NF}' | cut -d ":" -f 1,3 | sed 's/written//' | sed  's/(//' | sed 's/%)//' | sed 's/\:/\t/' | rev | cut -d "_" -f 1 | rev > <output_file>
+
+
+Get sickle results
+
+    grep -n -e kept -e discarded <stdout_directory>/cutadapt_set*.o* | cut -d ":" -f 1,3,4 | awk '{print $1, $2, $4, $5}' | rev | cut -d "_" -f 1 | rev > <output_file>
+
+
+Get percent of duplicates based on mapping.  The error files from the SpeedSeq align commands contain a line that has the percent of duplicates for the mapped fastq.  To retrieve these values along with sample names use:
+
+    grep duplicates Speedseq_large.* | awk '{split($0,a,"CutAdapt/") ; print(a[2],a[3],a[4])}' | cut -d ")" -f 1 -s | awk '{split($1,a,"_R1");print(a[1],$NF)}' | cut -d "%" -f 1 -s | sed 's/(/ /'
+
+
+#### Merging newly-mapped BAMs with pre-existing, already-merged BAMs.  
+
+Run the below python script to generate the commands to be subsequently run on the cluster.  
+
+    python scripts/code/Generate_MergeExistingBAMs_commands.py \
+        -u <unmerged_bam_directory> \
+        -m <merged_bam_directory> \
+        -k <merge_Key> \
+        -o <output_bam_directory> \
+        -r <Reference_Path_Key> \
+        -s <path_to_speedseq_directory> > <command_file>
+
+The *merge_key* is essentially the same as the *sample_fastq_key* used previously, except I subset it to include only the necessary sample IDs.  You can use the shell script *./scripts/jobs/Sambamba_MergeBAMs.sh* to submit the jobs in the *command_file* as a task array, via:
+
+    qsub -t <XX>-<YY> Sambamba_MergeBAMs.sh -F "<path_to_command_file>"
+
+, where XX and YY correspond to the range of line numbers in the *command_file* that user has specified.
+
 
   
 

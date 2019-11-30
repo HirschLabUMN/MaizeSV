@@ -93,7 +93,7 @@ if __name__ == "__main__":
     sickle_path = args.s.replace("~", home)
 
     assert shutil.which(cutadapt_path), print("Did not find the CutAdapt executable at", cutadapt_path, ".  Be sure to provide exact path to executable file.")
-    assert shutil.which(sickle_path), print("Did not find the Sickle executable at", cutadapt_path, ".  Be sure to provide exact path to executable file.")
+    assert shutil.which(sickle_path), print("Did not find the Sickle executable at", sickle_path, ".  Be sure to provide exact path to executable file.")
 
     if args.o.endswith("/") is False: # Add "/" to end of output path if it doesn't already exist so that path to output file is formatted correctly
         args.o += "/"

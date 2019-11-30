@@ -5,19 +5,19 @@
 #PBS -q mesabi
 
 
-# And the command list
+# Format arguments
 SCRIPT=`basename $0`
 if [ "$#" -ne 1 ]; then
 cat << EOF
 Usage: qsub ${SCRIPT} -F \"<Command_File>\"
-        This script is used to submit CutAdapt jobs, as listed in Command_File, as a task array.
+        This script is used to submit CutAdapt jobs, as listed in Command_File, as a task array.  The Command_File can be generated via the Generate_CutAdapt_commands.py scripts in the scripts/code subdirectory.
         
 EOF
 exit 1
 fi
 
 if ! [ -e "$1" ]; then
-    echo "Command file:$1 not found" >&2
+    echo "Command file: ${1} not found" >&2
     exit 1
 fi
 
@@ -25,4 +25,4 @@ CMD_LIST="$1"
 
 CMD="$(sed "${PBS_ARRAYID}q;d" ${CMD_LIST})"
 
-eval ${CMD} && sed "${PBS_ARRAYID}q;d" ${CMD_LIST} | rev | cut -d " " -f 1 | rev >> "${SUCCESS_LIST}"
+eval ${CMD} && sed "${PBS_ARRAYID}q;d" ${CMD_LIST} | rev | cut -d " " -f 1 | rev
