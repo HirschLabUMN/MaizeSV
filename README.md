@@ -26,6 +26,7 @@ Activate this environment prior to using any _SVtools_ or other py27-dependent s
 You will also need the following python modules, which can be installed with pip or conda:
 
     pip install biopython
+    pip install pysam
     pip install --user --upgrade cutadapt
     pip install scikit-allel
     conda install -c bioconda svtools
@@ -137,10 +138,14 @@ You can use **fastqc.sh** in _/scripts/jobs/_ to run these commands in parallel 
 
 ### Adapter and Quality Trimming — _CutAdapt_ and _Sickle_
 
+First load python 3.6:
+
+    module load python/3.6.3
+
 To generate commands for cutadapt and sickle, use the script _./scripts/code/_**Generate_CutAdapt_commands.py**.  The use of this script differs depending on whether the paired-end fastq data is in an interleaved format (both forward and reverse reads are interleaved in a single file) versus in separate files.  For interleaved data, simply do:
 
-    python Generate_CutAdapt_commands.py -c path_to_cutadapt \
-    -s path_to_sickle \
+    python Generate_CutAdapt_commands.py -c <path_to_cutadapt> \
+    -s <path_to_sickle> \
     -r read_path_file \
     -o output_directory >> commands_file
 
