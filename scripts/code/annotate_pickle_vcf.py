@@ -131,7 +131,7 @@ if __name__ == "__main__":
                 out1, err1 = p.communicate()
                 vcf = vcf.strip(".gz")
 
-            anntfile = f"{args.o}/{ref}.annt.{args.s}.gz"
+            anntfile = f"{args.o}/{ref}.annt.{args.s}.vcf.gz"
             padded_bed_file = padBedFile(bed_file, args.b)
             annotateVCF(vcf, padded_bed_file, anntfile, args.ad, args.sp) 
             if i==0: template_vcf = anntfile #This is necessary for reordering sample names in the VCFs so that all are in same order across references.

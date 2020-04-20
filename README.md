@@ -447,7 +447,7 @@ To prepare the collection of gene-key files, use the script code/pickle_homologu
     optional arguments:
       -h, --help           show this help message and exit
       -f geneKey_fileList  tab delimited file 3 columns: reference1 reference2
-                       ref1-ref1_gene-key-file. Note that there is a
+                       ref1-ref2_gene-key-file. Note that there is a
                        directionality to the gene-key files. E.g. The gene-key
                        file, 500kb_W22_B73_AllbyAll_res.txt, specifically
                        corresponds to W22 as reference1 and B73 as reference2
