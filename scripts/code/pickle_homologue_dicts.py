@@ -40,8 +40,8 @@ def addFile(in_file, ref1dict, ref2dict, ref1key, ref2key):
                     if alt_gene[0] == '0' or ref_gene == '0': #No matches 
                         continue
                     else:
-                       ref2dict = addGene(ref2dict, alt_gene, ref1key, ref_gene) #returns a modified ref2dict which now includes data passed in arguments
-                       ref1dict = addGene(ref1dict, ref_gene, ref2key, alt_gene)
+                       ref2dict = addGene(ref2dict, alt_gene[0], ref1key, ref_gene) #returns a modified ref2dict which now includes data passed in arguments
+                       ref1dict = addGene(ref1dict, ref_gene, ref2key, alt_gene[0])
     return(ref1dict, ref2dict)
 
 def Pickle(Dict, file):
